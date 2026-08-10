@@ -310,15 +310,23 @@
   .season-feed-item .ic{flex-shrink:0;}
 
   /* ===== mercado de pases ===== */
-  .market-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(190px,1fr));gap:10px;margin-top:14px;}
+  .market-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(220px,1fr));gap:10px;margin-top:14px;}
   .market-card{
     text-align:left;cursor:pointer;background:rgba(255,255,255,0.04);border:1px solid var(--edge);border-radius:12px;padding:14px;
-    color:var(--text);font-family:'Inter',sans-serif;display:flex;flex-direction:column;gap:8px;
+    color:var(--text);font-family:'Inter',sans-serif;display:flex;flex-direction:column;gap:6px;position:relative;
   }
   .market-card:hover{border-color:var(--yellow);transform:translateY(-2px);}
+  .market-card .mk-badge-renew{position:absolute;top:10px;right:10px;background:rgba(51,209,126,0.2);color:var(--green);font-family:'JetBrains Mono',monospace;font-size:9px;letter-spacing:1px;text-transform:uppercase;padding:3px 8px;border-radius:12px;}
   .market-card .mk-top{display:flex;align-items:center;gap:8px;}
   .market-card .mk-name{font-family:'Archivo Black',sans-serif;font-size:13.5px;text-transform:uppercase;}
-  .market-card .mk-note{font-size:12px;color:var(--text-dim);}
+  .market-card .mk-league{font-family:'JetBrains Mono',monospace;font-size:10px;color:var(--text-dim);}
+  .market-card .mk-salary{font-family:'Archivo Black',sans-serif;font-size:18px;color:var(--green);margin-top:2px;}
+  .market-card .mk-salary small{font-family:'JetBrains Mono',monospace;font-size:10px;color:var(--text-dim);font-weight:normal;text-transform:none;}
+  .market-card .mk-note{font-size:11.5px;color:var(--text-dim);}
+  .market-card .mk-note.up{color:var(--green);}
+  .market-card .mk-note.down{color:var(--red);}
+  .market-card .mk-progress-track{height:5px;border-radius:4px;background:rgba(255,255,255,0.1);overflow:hidden;margin-top:4px;}
+  .market-card .mk-progress-fill{height:100%;background:var(--green);border-radius:4px;}
 
   @media (prefers-reduced-motion: reduce){ *{transition:none !important; animation:none !important;} }
 </style>
@@ -555,6 +563,12 @@ async function onExistingTeamBadgeSelected(inputEl, teamId){
 
 /* ================= LEAGUE TAB ================= */
 function strengthFromTitles(titles){ return clamp(42 + titles*6, 30, 99); }
+async function incrementTeamSimTitles(teamId){
+  const t = findTeam(teamId);
+  if(!t) return;
+  t.simTitles = (t.simTitles||0) + 1;
+  await saveTeam(t);
+}
 function seedTeams(){
   const seed = [
     ['Atlético del Puerto','#1d3f8f'],['Unión del Norte','#a3222c'],['Deportivo Central','#1f6d3c'],
@@ -1206,6 +1220,150 @@ function buildEvent(){
     });
   }
 
+  pool.push({
+    title:'La cláusula de salida',
+    desc:`Tu representante te avisa que ${team.name} quiere ponerte una cláusula de salida altísima en el próximo contrato, para blindarte de otros clubes.`,
+    options:[
+      {label:'Aceptar el blindaje', preview:'El club te muestra que confía en vos a largo plazo.',
+        apply:()=>{ career.fanLove=clamp(career.fanLove+8,0,100);
+        return 'Aceptás el blindaje. El club te deja claro que sos intransferible.'; }},
+      {label:'Pedir una cláusula más baja', preview:'⚠️ Te deja más libre para salir, pero el club lo puede tomar como una señal de que no querés quedarte.',
+        apply:()=>{ career.fanLove=clamp(career.fanLove-4,0,100); career.rating=clamp(career.rating+1,20,99);
+        return 'Conseguís una cláusula más baja. Te deja más libre, aunque el club lo nota.'; }}
+    ]
+  });
+
+  pool.push({
+    title:'Vuelta después de la lesión',
+    desc:'Después de unas semanas afuera, llega el momento de volver a jugar. El cuerpo técnico te pregunta cómo te sentís.',
+    options:[
+      {label:'Decir que estás al cien y pedir jugar ya', preview:'⚠️ Con buena Resistencia el riesgo es bajo; si no, te puede volver a jugar en contra.',
+        apply:()=>{ const badChance = clamp(0.45-career.stats.resistencia/240,0.05,0.45); const bad=Math.random()<badChance;
+        career.form=clamp(career.form+(bad?-14:9),0,100);
+        return bad? 'Volviste antes de tiempo y la molestia reaparece en las primeras fechas.' : 'Volviste bien y no sentiste nada raro.'; }},
+      {label:'Pedir una semana más de trabajo diferenciado', preview:'Perdés algo de ritmo de competencia, pero volvés más entero.',
+        apply:()=>{ career.form=clamp(career.form+5,0,100);
+        return 'Sumás una semana más de trabajo diferenciado antes de volver.'; }}
+    ]
+  });
+
+  pool.push({
+    title:'El pibe que te pisa los talones',
+    desc:`Sube de las inferiores de ${team.name} un juvenil que juega en tu misma posición y promete mucho.`,
+    options:[
+      {label:'Ayudarlo a entrenar mejor', preview:'El club valora tu generosidad, aunque a la larga te haga competencia.',
+        apply:()=>{ career.fanLove=clamp(career.fanLove+9,0,100);
+        return 'Lo ayudás a entrenar mejor. El club valora la generosidad, aunque sea tu propio competidor.'; }},
+      {label:'Marcar tu territorio en la cancha', preview:'Le mostrás con hechos quién es el titular.',
+        apply:()=>{ career.rating=clamp(career.rating+2,20,99); career.fanLove=clamp(career.fanLove-3,0,100);
+        return 'Subís tu nivel para dejar en claro quién es el titular. Algunos te ven un poco frío.'; }}
+    ]
+  });
+
+  pool.push({
+    title:'Partido homenaje',
+    desc:`Organizan un partido homenaje a una gloria histórica de ${team.name} y te invitan a ser parte del equipo de gala.`,
+    options:[
+      {label:'Participar con orgullo', preview:'La hinchada valora que respetes la historia del club.',
+        apply:()=>{ career.fanLove=clamp(career.fanLove+9,0,100);
+        return 'Jugás el homenaje con orgullo. La hinchada valora que respetes la historia del club.'; }},
+      {label:'Disculparte, preferís descansar', preview:'Nadie te lo va a reprochar tanto, pero perdés una chance de sumar cariño.',
+        apply:()=>{ career.form=clamp(career.form+4,0,100);
+        return 'Preferís descansar. Nadie te lo reprocha demasiado.'; }}
+    ]
+  });
+
+  pool.push({
+    title:'Rumor de mercado',
+    desc:`Un periodista tira al aire que ${team.name} te estaría por vender en el próximo mercado de pases, sin confirmación oficial.`,
+    options:[
+      {label:'Salir a desmentirlo públicamente', preview:'Calma las aguas con la hinchada, aunque después dependas de que sea verdad.',
+        apply:()=>{ career.fanLove=clamp(career.fanLove+6,0,100);
+        return 'Salís a desmentirlo. La hinchada se queda más tranquila.'; }},
+      {label:'No decir nada y dejar que se apague solo', preview:'Puede generar ruido innecesario en el vestuario.',
+        apply:()=>{ career.form=clamp(career.form-3,0,100);
+        return 'Preferís el silencio. El rumor genera un poco de ruido en el vestuario.'; }}
+    ]
+  });
+
+  pool.push({
+    title:'El míster te pide un sacrificio táctico',
+    desc:`Para un partido clave, el entrenador de ${team.name} te pide jugar más replegado de lo normal, sacrificando tu juego ofensivo por el equipo.`,
+    options:[
+      {label:'Aceptar el sacrificio', preview:'El equipo se beneficia, aunque bajen tus números personales esta fecha.',
+        apply:()=>{ career.fanLove=clamp(career.fanLove+7,0,100); career.stats.liderazgo=clamp(career.stats.liderazgo+1,10,99);
+        return 'Te plegás al pedido táctico. El equipo lo agradece, aunque tus números bajen esta fecha.'; }},
+      {label:'Pedir jugar con libertad', preview:'Podés lucirte más, pero el técnico puede tomarlo a mal.',
+        apply:()=>{ career.rating=clamp(career.rating+1,20,99); career.fanLove=clamp(career.fanLove-3,0,100);
+        return 'Pedís libertad para jugar como siempre. El técnico no queda del todo conforme.'; }}
+    ]
+  });
+
+  pool.push({
+    title:'Charla motivacional',
+    desc:`Te invitan a dar una charla a las inferiores de ${team.name} sobre cómo llegaste hasta acá.`,
+    options:[
+      {label:'Aceptar y compartir tu historia', preview:'Los chicos del club te empiezan a ver como un ejemplo a seguir.',
+        apply:()=>{ career.fanLove=clamp(career.fanLove+8,0,100); career.stats.liderazgo=clamp(career.stats.liderazgo+2,10,99);
+        return 'Das la charla y los chicos del club te empiezan a ver como un ejemplo.'; }},
+      {label:'Declinar, preferís mantener perfil bajo', preview:'Seguís enfocado solo en lo tuyo.',
+        apply:()=>{ career.form=clamp(career.form+2,0,100);
+        return 'Preferís mantener perfil bajo y seguir enfocado en lo tuyo.'; }}
+    ]
+  });
+
+  pool.push({
+    title:'Cambio de entrenador',
+    desc:`${team.name} despide al técnico en medio de la temporada y llega uno nuevo con ideas distintas.`,
+    options:[
+      {label:'Ganarte al nuevo entrenador desde el primer día', preview:'Arrancás con el pie derecho la nueva etapa.',
+        apply:()=>{ career.form=clamp(career.form+6,0,100);
+        return 'Te ganás la confianza del nuevo entrenador desde el primer entrenamiento.'; }},
+      {label:'Esperar a ver qué pide antes de exponerte', preview:'Vas más seguro, pero perdés algo de protagonismo al inicio.',
+        apply:()=>{ career.form=clamp(career.form+2,0,100); career.fanLove=clamp(career.fanLove-2,0,100);
+        return 'Preferís esperar y observar antes de meterte de lleno.'; }}
+    ]
+  });
+
+  pool.push({
+    title:'La camiseta número 10',
+    desc:`Queda libre la camiseta emblemática de ${team.name} y el cuerpo técnico te la ofrece a vos.`,
+    options:[
+      {label:'Aceptar el peso de la 10', preview:'Mucha responsabilidad, pero la hinchada te va a bancar a muerte si respondés.',
+        apply:()=>{ career.fanLove=clamp(career.fanLove+10,0,100); career.form=clamp(career.form-2,0,100);
+        return 'Te ponés la 10. La responsabilidad es enorme, pero la hinchada te banca.'; }},
+      {label:'Pedir un número más discreto', preview:'Menos presión, menos exposición también.',
+        apply:()=>{ career.form=clamp(career.form+3,0,100);
+        return 'Preferís un número más discreto y menos presión encima.'; }}
+    ]
+  });
+
+  pool.push({
+    title:'Fecha libre inesperada',
+    desc:'Se suspende un partido por lluvia y te queda un fin de semana libre que no esperabas.',
+    options:[
+      {label:'Aprovechar para entrenar por tu cuenta', preview:'Sumás trabajo extra que nadie te pidió.',
+        apply:()=>{ const k=choice(STAT_KEYS); career.stats[k]=clamp(career.stats[k]+2,10,99);
+        return `Aprovechás el tiempo libre para entrenar por tu cuenta y ganás algo de nivel.`; }},
+      {label:'Descansar la cabeza con la familia', preview:'Volvés recargado mentalmente.',
+        apply:()=>{ career.form=clamp(career.form+7,0,100);
+        return 'Descansás la cabeza con la familia. Volvés recargado.'; }}
+    ]
+  });
+
+  pool.push({
+    title:'Entrevista incómoda',
+    desc:'En una nota post-partido, un periodista te hace una pregunta filosa sobre el nivel del equipo.',
+    options:[
+      {label:'Responder con crítica constructiva', preview:'⚠️ Puede sonar valiente o puede caerle mal al vestuario.',
+        apply:()=>{ const ok=Math.random()<0.5; career.fanLove=clamp(career.fanLove+(ok?7:-5),0,100);
+        return ok? 'Tu respuesta cae bien: la gente valora la sinceridad.' : 'Tu respuesta genera ruido puertas adentro del club.'; }},
+      {label:'Responder con diplomacia total', preview:'Nadie se enoja, pero tampoco decís nada memorable.',
+        apply:()=>{ career.form=clamp(career.form+2,0,100);
+        return 'Respondés con total diplomacia. Nadie se enoja, nadie se entusiasma.'; }}
+    ]
+  });
+
   return choice(pool);
 }
 
@@ -1228,18 +1386,16 @@ async function resolveEvent(i){
   career.log.push({age:career.age, text: outcome});
   career._lastVerdict = { good: after>=before, text: outcome };
   pendingEvent=null;
-  const summary = simulateSeason();
-  career.log.push({age:career.age, text: summary.text});
-  career.phase='summary';
-  career._lastSummary = summary;
-  const scoutTeam = rollScoutInterest();
-  career._scoutOffer = scoutTeam ? scoutTeam.id : null;
-  updateRating();
+  const s = computeSeasonPerformance();
   await saveActiveCareer();
-  render();
+  if(s.ligaContention || s.copaContention){
+    launchMinigame(s.ligaContention ? 'liga' : 'copa');
+  } else {
+    await finalizeSeason(false);
+  }
 }
 
-function simulateSeason(){
+function computeSeasonPerformance(){
   const team = findTeam(career.teamId);
   const w = ratingWeights(career.position);
   let overall = STAT_KEYS.reduce((s,k)=>s+career.stats[k]*w[k],0);
@@ -1270,18 +1426,26 @@ function simulateSeason(){
   let leaguePos = Math.round(((100-teamPerf)/100)*n)+randInt(-1,1);
   leaguePos = clamp(leaguePos,1,n);
   const liderazgoBoost = clamp((career.stats.liderazgo-50)/220, -0.1, 0.18);
-  const wonLiga = leaguePos===1 && Math.random()<(0.55+liderazgoBoost);
-  const wonCopa = !wonLiga && teamPerf>68 && Math.random()<(0.28+liderazgoBoost);
-  const wonInternacional = wonLiga && teamPerf>82 && Math.random()<0.22;
-
-  if(wonLiga) career.trophies.ligas++;
-  if(wonCopa) career.trophies.copas++;
-  if(wonInternacional) career.trophies.internacionales++;
+  const ligaContention = leaguePos===1 && Math.random()<(0.6+liderazgoBoost);
+  const copaContention = !ligaContention && teamPerf>68 && Math.random()<(0.35+liderazgoBoost);
 
   career.careerApps += apps; career.careerGoals += goals; career.careerAssists += assists;
-
   const perfDelta = career.rating - 60;
-  career.fanLove = clamp(career.fanLove + Math.round(perfDelta/12) + (wonLiga?6:0) + (wonCopa?3:0), 0, 100);
+  career.fanLove = clamp(career.fanLove + Math.round(perfDelta/12), 0, 100);
+
+  // el rendimiento de la temporada también hace crecer las stats, no solo el dado
+  const primaryStat = STAT_KEYS.reduce((a,b)=> w[b]>w[a]?b:a, STAT_KEYS[0]);
+  const secondaryStat = STAT_KEYS.filter(k=>k!==primaryStat).reduce((a,b)=> w[b]>w[a]?b:a, STAT_KEYS.filter(k=>k!==primaryStat)[0]);
+  const productivity = career.position==='ARQ' ? cleanSheets/Math.max(1,apps) : (goals+assists)/Math.max(1,apps);
+  let growthNote = '';
+  if(productivity>=0.5){
+    career.stats[primaryStat]=clamp(career.stats[primaryStat]+2,10,99);
+    career.stats[secondaryStat]=clamp(career.stats[secondaryStat]+1,10,99);
+    growthNote = ` El nivel que mostraste te hizo crecer en la cancha (+2 ${statLabels()[primaryStat]}, +1 ${statLabels()[secondaryStat]}).`;
+  } else if(productivity>=0.28){
+    career.stats[primaryStat]=clamp(career.stats[primaryStat]+1,10,99);
+    growthNote = ` Sumaste experiencia esta temporada (+1 ${statLabels()[primaryStat]}).`;
+  }
 
   // rival de la temporada
   const rq = career.rival.quality;
@@ -1292,17 +1456,57 @@ function simulateSeason(){
   const rivalTotal = career.rival.goals + career.rival.assists;
   const rivalWonSeason = (rGoals+rAssists) > (goals+assists);
 
-  let text = `Temporada con ${team.name}: ${apps} partidos`;
-  if(career.position==='ARQ') text += `, ${cleanSheets} vallas invictas`;
-  else text += `, ${goals} goles y ${assists} asistencias`;
-  text += `. El equipo terminó ${leaguePos}° en la tabla`;
+  const s = {teamId:team.id, apps, goals, assists, cleanSheets, leaguePos, teamPerf, n,
+    ligaContention, copaContention, growthNote, rGoals, rAssists, playerTotal, rivalTotal, rivalWonSeason};
+  career._pendingSeason = s;
+  return s;
+}
+
+async function finalizeSeason(won){
+  const s = career._pendingSeason;
+  const team = findTeam(s.teamId);
+  let wonLiga=false, wonCopa=false, wonInternacional=false;
+  if(s.ligaContention){
+    wonLiga = won;
+  } else if(s.copaContention){
+    wonCopa = won;
+  }
+  if(wonLiga){
+    career.trophies.ligas++;
+    incrementTeamSimTitles(team.id);
+    career.stats.liderazgo=clamp(career.stats.liderazgo+1,10,99);
+    wonInternacional = team.strength>82 && Math.random()<0.22;
+    if(wonInternacional) career.trophies.internacionales++;
+  }
+  if(wonCopa){
+    career.trophies.copas++;
+    incrementTeamSimTitles(team.id);
+    career.stats.liderazgo=clamp(career.stats.liderazgo+1,10,99);
+  }
+  career.fanLove = clamp(career.fanLove + (wonLiga?8:0) + (wonCopa?4:0) + ((s.ligaContention||s.copaContention) && !won ? -3 : 0), 0, 100);
+
+  let text = `Temporada con ${team.name}: ${s.apps} partidos`;
+  if(career.position==='ARQ') text += `, ${s.cleanSheets} vallas invictas`;
+  else text += `, ${s.goals} goles y ${s.assists} asistencias`;
+  text += `. El equipo terminó ${s.leaguePos}° en la tabla`;
   if(wonLiga) text += ' y se consagró CAMPEÓN de liga';
-  else if(wonCopa) text += ' y se quedó con una copa nacional';
+  else if(wonCopa) text += ' y se quedó con una copa';
+  else if(s.ligaContention) text += '. Llegaron a la definición de liga pero no se pudo';
+  else if(s.copaContention) text += '. Llegaron a la final de copa pero no se pudo';
   if(wonInternacional) text += ', además de gloria internacional';
   text += '.';
+  text += s.growthNote;
+  career.log.push({age:career.age, text});
 
-  return {apps,goals,assists,cleanSheets,leaguePos,wonLiga,wonCopa,wonInternacional,text,
-    rGoals,rAssists,playerTotal,rivalTotal,rivalWonSeason};
+  career._lastSummary = {...s, wonLiga, wonCopa, wonInternacional, text};
+  const scoutTeam = rollScoutInterest();
+  career._scoutOffer = scoutTeam ? scoutTeam.id : null;
+  career._minigame = null;
+  career._pendingSeason = null;
+  career.phase='summary';
+  updateRating();
+  await saveActiveCareer();
+  render();
 }
 
 /* interés espontáneo de otros clubes: más probable con buen liderazgo/rating,
@@ -1318,6 +1522,96 @@ function rollScoutInterest(){
   let picked = weighted[0].t;
   for(const x of weighted){ if(r<x.w){ picked=x.t; break; } r-=x.w; }
   return picked;
+}
+
+/* ================================================================
+   MINIJUEGO DE DEFINICIÓN (Liga / Copa FuxBall)
+   ----------------------------------------------------------------
+   GANCHO PARA TU PROPIO MINIJUEGO:
+   Si en algún momento subís tu propio archivo de "la Copa" y ese
+   archivo define, antes de </body>, una función global:
+       window.customCupMinigame = function(context, onResult){ ... }
+   donde:
+     - context = { type: 'liga'|'copa', career, team }
+     - onResult(true)  => tu jugador GANA el título
+     - onResult(false) => tu jugador NO gana el título esta vez
+   entonces el juego va a usar TU minijuego en vez del de penales
+   que viene incorporado. No hace falta tocar nada más de este
+   archivo para que funcione, solo pegar tu script antes de </body>.
+   ================================================================ */
+const ZONES = ['izquierda','centro','derecha'];
+function launchMinigame(type){
+  if(typeof window.customCupMinigame === 'function'){
+    const team = findTeam(career.teamId);
+    window.customCupMinigame({type, career, team}, async (won)=>{ await finalizeSeason(!!won); });
+    return;
+  }
+  const dist = {};
+  let remaining = 1;
+  ZONES.forEach((z,i)=>{
+    const v = i===ZONES.length-1 ? remaining : Math.random()*remaining*0.7;
+    dist[z] = Math.round(v*100)/100;
+    remaining -= v;
+  });
+  career._minigame = { type, round:0, goals:0, shots:5, dist, done:false };
+  career.phase='minigame';
+  render();
+}
+function hintFor(zone){
+  const pegada = career.stats.pegada;
+  const noise = clamp(45 - pegada/2.2, 6, 45);
+  const raw = career._minigame.dist[zone]*100 + randRange(-noise,noise);
+  return Math.round(clamp(raw,4,92));
+}
+function renderMinigame(){
+  const m = career._minigame;
+  const team = findTeam(career.teamId);
+  const title = m.type==='liga' ? 'Definición del título de Liga' : 'Final de la Copa FuxBall';
+  if(m.done){
+    const won = m.goals>=3;
+    return `
+    <div class="card phase-in" style="text-align:center;padding:34px 22px;">
+      <div style="font-size:52px;">${won?'🏆':'😔'}</div>
+      <h2 style="text-align:center;border:none;">${won? '¡GANASTE LA DEFINICIÓN!' : 'No alcanzó esta vez'}</h2>
+      <div class="muted">Convertiste ${m.goals} de ${m.shots} penales.</div>
+      <div class="btn-row" style="justify-content:center;"><button class="btn gold" onclick="closeMinigame()">Continuar</button></div>
+    </div>`;
+  }
+  return `
+    <div class="card phase-in">
+      <h2>${title}</h2>
+      <div class="muted">Penal ${m.round+1} de ${m.shots} · Convertidos: ${m.goals} · ${team.name}</div>
+      <div class="muted" style="margin-bottom:10px;">El ojeador del rival te pasó un informe del arquero. Tu Pegada define qué tan confiable es el dato.</div>
+      <div class="event-options">
+        ${ZONES.map(z=>`
+          <button class="event-option" onclick="resolveMinigameShot('${z}')">
+            <b>${z.charAt(0).toUpperCase()+z.slice(1)}</b>
+            <div class="preview">Se tira para ese lado ~${hintFor(z)}% de las veces</div>
+          </button>`).join('')}
+      </div>
+    </div>`;
+}
+async function resolveMinigameShot(zone){
+  const m = career._minigame;
+  const dist = m.dist;
+  const r = Math.random();
+  let acc=0, keeperDive=ZONES[ZONES.length-1];
+  for(const z of ZONES){ acc+=dist[z]; if(r<=acc){ keeperDive=z; break; } }
+  const pegada = career.stats.pegada, velocidad = career.stats.velocidad;
+  let goalChance;
+  if(zone===keeperDive){ goalChance = clamp(0.12 + (pegada+velocidad)/420, 0.1, 0.55); }
+  else { goalChance = clamp(0.72 + pegada/450, 0.7, 0.95); }
+  const scored = Math.random()<goalChance;
+  if(scored) m.goals++;
+  m.round++;
+  career.log.push({age:career.age, text: scored? `Penal convertido, tiró a la ${zone}.` : `Penal errado, el arquero adivinó y se tiró a la ${keeperDive}.`});
+  if(m.round>=m.shots) m.done=true;
+  await saveActiveCareer();
+  render();
+}
+async function closeMinigame(){
+  const won = career._minigame.goals>=3;
+  await finalizeSeason(won);
 }
 
 function seasonGrade(s){
@@ -1444,7 +1738,7 @@ async function retireCareer(){
   const entry = {
     id: career.id, name: career.name, position: career.position, team: team?team.name:'', teamColor: team?team.color:'#888', teamBadge: team?team.badge:null,
     retireAge: career.age, tier: tier.name, score,
-    goals: career.careerGoals, assists: career.careerAssists,
+    goals: career.careerGoals, assists: career.careerAssists, apps: career.careerApps,
     trophies: career.trophies, flavor: choice(tier.lines),
     rivalName: career.rival.name, rivalTeam: career.rival.team,
     playerTotal: career.careerGoals+career.careerAssists, rivalTotal: career.rival.goals+career.rival.assists,
@@ -1459,7 +1753,7 @@ async function retireCareer(){
   tab='ranking';
   render();
   const link = `${window.location.origin}${window.location.pathname}?career=${entry.id}`;
-  showCareerLinkToast(link);
+  showCareerLinkToast(entry, link);
 }
 async function pruneHistoryToRecent(keep){
   const keys = localListPrefix('history:');
@@ -1467,12 +1761,23 @@ async function pruneHistoryToRecent(keep){
   withData.sort((a,b)=>b.entry.timestamp-a.entry.timestamp);
   withData.slice(keep).forEach(x=>localDelete(x.k));
 }
-function showCareerLinkToast(link){
+function showCareerLinkToast(entry, link){
   const el = document.getElementById('app');
   const box = document.createElement('div');
   box.className = 'card phase-in';
+  const topTeams = [...league.teams].sort((a,b)=>(b.simTitles||0)-(a.simTitles||0)).slice(0,5).filter(t=>(t.simTitles||0)>0);
   box.innerHTML = `<h2>¡Carrera retirada!</h2>
-    <div class="muted">Se guardó en el ranking. Guardá este link para poder volver a ver esta carrera cuando quieras (funciona aunque se borre de tu historial local):</div>
+    <div class="season-grade"><span class="l">Puntos de Gloria</span><span class="n">${entry.score} ⭐</span></div>
+    <div class="season-feed">
+      <div class="season-feed-item"><div class="ic">⚽🤝</div><div><b>${entry.goals} goles</b> y <b>${entry.assists} asistencias</b> en ${entry.apps} partidos.</div></div>
+      <div class="season-feed-item pos"><div class="ic">🏆</div><div>Títulos personales: <b>${entry.trophies.ligas}</b> ligas, <b>${entry.trophies.copas}</b> copas, <b>${entry.trophies.internacionales}</b> internacionales.</div></div>
+    </div>
+    ${topTeams.length? `
+      <h3>Equipos más ganadores de la simulación</h3>
+      <div class="ledger">
+        ${topTeams.map((t,i)=>`<div class="ledger-row"><div class="age">${i+1}°</div><div class="detail">${t.name}</div><div class="num">${t.simTitles} 🏆</div></div>`).join('')}
+      </div>` : ''}
+    <div class="muted" style="margin-top:12px;">Guardá este link para poder volver a ver esta carrera cuando quieras (funciona aunque se borre de tu historial local):</div>
     <div class="row" style="margin-top:10px;">
       <div><input type="text" id="careerLinkInput" readonly value="${link}" onclick="this.select()"></div>
       <div style="flex:0;"><button class="btn gold" onclick="copyCareerLink()">Copiar</button></div>
@@ -1555,39 +1860,79 @@ function confirmRetireFromDossier(){
 }
 
 /* ================= MERCADO DE PASES (pase único por carrera) ================= */
+function offerSalary(team){
+  const base = career.rating*career.rating*4 + team.strength*30;
+  return clamp(Math.round(base/1000)*1000, 2000, 60000);
+}
+function playtimeDelta(team){
+  const current = findTeam(career.teamId);
+  if(!current) return 'up';
+  return team.strength < current.strength ? 'up' : 'down';
+}
 function openTransferMarket(){
+  const currentTeam = findTeam(career.teamId);
   const otherTeams = league.teams.filter(t=>t.id!==career.teamId);
   if(otherTeams.length<2){ toast('No hay suficientes equipos para armar el mercado'); return; }
   const shuffled = [...otherTeams];
   const offers = [];
   for(let i=0;i<Math.min(4,shuffled.length);i++){ offers.push(shuffled.splice(randInt(0,shuffled.length-1),1)[0]); }
   career._marketOffers = offers.map(t=>t.id);
+  career._marketIncludesRenewal = true;
   career.phase='market';
   render();
 }
 function renderMarket(){
   const team = findTeam(career.teamId);
   const offers = (career._marketOffers||[]).map(id=>findTeam(id)).filter(Boolean);
+  const renewYears = randInt(2,3);
+  const renewSalary = offerSalary(team);
+  const nextTierAt = career.fanLove<15?15:career.fanLove<35?35:career.fanLove<65?65:career.fanLove<90?90:100;
+  const ptsToNext = Math.max(0, nextTierAt-career.fanLove);
+  const renewCard = `
+    <button class="market-card" onclick="renewWithCurrentTeam()">
+      <div class="mk-badge-renew">Renovación</div>
+      <div class="mk-top">${badgeHtml(team,'dossier-badge')}<div><div class="mk-name" style="color:${team.color}">${team.name}</div><div class="mk-league">${league.name}</div></div></div>
+      <div class="mk-salary">US$ ${Math.round(renewSalary/1000)}K<small>/mes · ${renewYears} años</small></div>
+      <div class="mk-note">Seguís en el club que ya conoce tu nivel.</div>
+      ${ptsToNext>0? `<div class="mk-progress-track"><div class="mk-progress-fill" style="width:${career.fanLove}%"></div></div><div class="mk-note">Te faltan ${ptsToNext} pts de idolatría para el próximo escalón.</div>` : `<div class="mk-note up">¡Ya sos ${idolatriaTier(career.fanLove)} para esta hinchada!</div>`}
+    </button>`;
+  const offerCards = offers.map(t=>{
+    const salary = offerSalary(t);
+    const years = randInt(2,3);
+    const delta = playtimeDelta(t);
+    const idolLoss = Math.round(career.fanLove*0.5);
+    return `
+    <button class="market-card" onclick="acceptTransfer('${t.id}')">
+      <div class="mk-top">${badgeHtml(t,'dossier-badge')}<div><div class="mk-name" style="color:${t.color}">${t.name}</div><div class="mk-league">${league.name}</div></div></div>
+      <div class="mk-salary">US$ ${Math.round(salary/1000)}K<small>/mes · ${years} años</small></div>
+      <div class="mk-note ${delta==='up'?'up':'down'}">${delta==='up'?'↑ Vas a jugar MÁS que ahora':'↓ Vas a jugar MENOS que ahora'}</div>
+      <div class="mk-note down">Dejás ${team.name}: -${idolLoss} de idolatría</div>
+      <div class="mk-note">Allá arrancás: ${idolatriaTier(2)} (2/100) — tu fama te precede</div>
+    </button>`;
+  }).join('');
   return `
     <div class="card phase-in">
       <h2>Mercado de pases</h2>
-      <div class="muted">Estas son las ofertas que llegaron. Podés pedir el pase una sola vez en toda tu carrera — usalo cuando de verdad te convenga.</div>
+      <div class="muted">El dado trajo estas ofertas. Elegí: ¿gloria o billetera? Podés pedir el pase a otro club una sola vez en toda tu carrera.</div>
       <div class="market-grid">
-        ${offers.map(t=>`
-          <button class="market-card" onclick="acceptTransfer('${t.id}')">
-            <div class="mk-top">${badgeHtml(t)}<div class="mk-name" style="color:${t.color}">${t.name}</div></div>
-            <div class="mk-note">Dejás ${team.name} y empezás de cero en la idolatría de la hinchada nueva.</div>
-          </button>`).join('')}
+        ${renewCard}
+        ${offerCards}
       </div>
-      <div class="btn-row"><button class="btn ghost" onclick="cancelTransfer()">Mejor me quedo en ${team.name}</button></div>
+      <div class="btn-row"><button class="btn ghost" onclick="cancelTransfer()">Ahora no, seguir jugando</button></div>
     </div>`;
+}
+async function renewWithCurrentTeam(){
+  career.fanLove = clamp(career.fanLove+5,0,100);
+  career.log.push({age:career.age, text:`Renueva contrato con ${findTeam(career.teamId).name}.`});
+  career.phase='idle'; career._marketOffers=null;
+  await saveActiveCareer(); render(); toast('Renovaste contrato');
 }
 async function acceptTransfer(teamId){
   const newTeam = findTeam(teamId);
   const oldTeam = findTeam(career.teamId);
   career.teamId = teamId;
   career.usedTransferRequest = true;
-  career.fanLove = clamp(Math.round(career.fanLove*0.4), 0, 100);
+  career.fanLove = clamp(Math.round(career.fanLove*0.5), 0, 100);
   career.log.push({age:career.age, text:`Pide el pase y deja ${oldTeam.name} para sumarse a ${newTeam.name}.`});
   career.phase='idle';
   career._marketOffers=null;
@@ -1610,6 +1955,7 @@ function renderCarrera(){
   }
   if(career.phase==='draft') return renderDraft();
   if(career.phase==='market') return renderMarket();
+  if(career.phase==='minigame') return renderMinigame();
   let html = renderActiveCareerCard();
   if(career.phase==='training') html += renderTraining();
   else if(career.phase==='training-choices') html += renderTrainingChoices();
@@ -1680,9 +2026,48 @@ async function checkStorage(){
   }
 }
 
+/* ================= VISTA DE CARRERA PUNTUAL (?career=ID) ================= */
+function renderCareerDetail(entry){
+  const items = [];
+  items.push({ic:'⚽🤝', text:`<b>${entry.goals} gol${entry.goals===1?'':'es'}</b> y <b>${entry.assists} asistencia${entry.assists===1?'':'s'}</b> en toda la carrera.`});
+  items.push({ic:'🏆', text:`Títulos: <b>${entry.trophies.ligas}</b> ligas, <b>${entry.trophies.copas}</b> copas, <b>${entry.trophies.internacionales}</b> internacionales.`});
+  if(entry.rivalName){
+    items.push({ic:'⚡', text:`Duelo histórico vs <b>${entry.rivalName}</b> (${entry.rivalTeam||''}): terminó ${entry.playerTotal>=entry.rivalTotal?'ganando':'perdiendo'} ${entry.playerTotal}-${entry.rivalTotal} en goles+asistencias.`});
+  }
+  return `
+    <div class="wrap" style="padding-top:20px;">
+      <div class="card phase-in">
+        <div class="season-eyebrow"><span>Ficha de carrera</span><span>Se retiró a los ${entry.retireAge}</span></div>
+        <div class="season-headline">${entry.name}</div>
+        <div class="season-sub">${posLabel(entry.position)} · ${entry.team} · <span class="tier-badge">${entry.tier}</span></div>
+        <div class="season-grade"><span class="l">Puntos de Gloria</span><span class="n">${entry.score} ⭐</span></div>
+        <div class="verdict-box good">${entry.flavor||''}</div>
+        <div class="season-feed">
+          ${items.map(it=>`<div class="season-feed-item"><div class="ic">${it.ic}</div><div>${it.text}</div></div>`).join('')}
+        </div>
+        <div class="btn-row"><button class="btn gold" onclick="window.location.search=''">Volver al juego</button></div>
+      </div>
+    </div>`;
+}
+async function tryRenderCareerFromUrl(){
+  const id = new URLSearchParams(window.location.search).get('career');
+  if(!id) return false;
+  document.body.innerHTML = `<div class="wrap" style="padding-top:40px;"><div class="card"><div class="spinner-row"><div class="spinner"></div><span>Buscando esa carrera…</span></div></div></div>`;
+  const raw = await remoteGet('leaderboard:'+id);
+  if(!raw){
+    document.body.innerHTML = `<div class="wrap" style="padding-top:40px;"><div class="card"><h2>No se encontró esa carrera</h2><div class="muted">Puede que el link esté mal o que la entrada se haya borrado.</div><div class="btn-row"><button class="btn gold" onclick="window.location.search=''">Volver al juego</button></div></div></div>`;
+    return true;
+  }
+  const entry = JSON.parse(raw);
+  document.body.innerHTML = renderCareerDetail(entry);
+  return true;
+}
+
 /* ================= INIT ================= */
 let leaderboardLoaded = false;
 async function init(){
+  const showedCareer = await tryRenderCareerFromUrl();
+  if(showedCareer) return;
   document.getElementById('app').innerHTML = `<div class="card"><div class="spinner-row"><div class="spinner"></div><span>Cargando tu liga…</span></div></div>`;
   await Promise.all([ checkStorage(), loadLeague(), loadActiveCareer(), loadHistory() ]);
   render();
