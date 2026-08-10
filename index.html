@@ -432,7 +432,7 @@ async function saveLeague(){
 }
 
 function careerStatsValid(c){
-  return c && c.stats && STAT_KEYS.every(k=>typeof c.stats[k]==='number' && !isNaN(c.stats[k]));
+  return c && c.stats && c.rival && c.startYear && STAT_KEYS.every(k=>typeof c.stats[k]==='number' && !isNaN(c.stats[k]));
 }
 async function loadActiveCareer(){
   const raw = localGet('active-career');
@@ -954,73 +954,85 @@ function buildEvent(){
   const pool = [];
 
   pool.push({
-    title:'Sala llena para el clásico',
-    desc:`Se viene ${team.name} vs ${rivalTeam.name} y la sala está full, con cola de espectadores para entrar a mirar. Todo el Discord del clan está pendiente.`,
+    title:'Estadio lleno para el clásico',
+    desc:`Se viene ${team.name} vs ${rivalTeam.name} con el estadio a pleno. La hinchada espera algo tuyo en el partido más importante del año.`,
     options:[
-      {label:'Pedir la pelota y arriesgar la gambeta', apply:()=>{ const ok=Math.random()<0.55;
+      {label:'Pedir la pelota y arriesgar todo', preview:'Si sale bien, te ganás a la hinchada para siempre. Si no, te van a putear un rato.',
+        apply:()=>{ const ok=Math.random()<0.55;
         career.form=clamp(career.form+(ok?12:-8),0,100); career.fanLove=clamp(career.fanLove+(ok?9:-6),0,100);
-        return ok? 'Te la jugaste y el chat de la sala explotó de emotes.' : 'Te la jugaste y no salió; el chat te llenó de memes.'; }},
-      {label:'Jugar simple y no arriesgar', apply:()=>{ career.form=clamp(career.form+3,0,100); career.fanLove=clamp(career.fanLove-2,0,100);
-        return 'Cumpliste sin sobresaltos. Nadie te putea, pero tampoco te aplauden en el chat.'; }}
+        return ok? 'Te la jugaste y la hinchada te ovacionó de pie.' : 'Te la jugaste y no salió; se escuchan algunos silbidos.'; }},
+      {label:'Jugar simple y no arriesgar', preview:'Cumplís sin sobresaltos, pero tampoco vas a ilusionar a nadie.',
+        apply:()=>{ career.form=clamp(career.form+3,0,100); career.fanLove=clamp(career.fanLove-2,0,100);
+        return 'Cumpliste sin sobresaltos. Nadie te reprocha nada, pero tampoco te aplauden.'; }}
     ]
   });
 
   pool.push({
-    title:'El dueño del clan te quiere renovar',
-    desc:`El líder de ${team.name} te ofrece seguir la próxima temporada, con la promesa de que serás titular fijo, aunque para eso tenés que bajarte de otras salas.`,
+    title:'Oferta de renovación',
+    desc:`La dirigencia de ${team.name} te ofrece renovar contrato con una cláusula que premia la fidelidad, aunque por menos plata de la que podrías pedir en otro lado.`,
     options:[
-      {label:'Firmar por lealtad al clan', apply:()=>{ career.fanLove=clamp(career.fanLove+10,0,100); career.form=clamp(career.form+4,0,100);
-        return 'La comunidad valora tu compromiso con los colores del clan.'; }},
-      {label:'Presionar por mejores condiciones', apply:()=>{ career.fanLove=clamp(career.fanLove-6,0,100); career.rating=clamp(career.rating+1,20,99);
-        return 'Conseguís mejor trato, pero algunos empiezan a verte como un mercenario de sala en sala.'; }}
+      {label:'Firmar por lealtad al club', preview:'La hinchada te lo va a agradecer, aunque ganes menos.',
+        apply:()=>{ career.fanLove=clamp(career.fanLove+10,0,100); career.form=clamp(career.form+4,0,100);
+        return 'Los hinchas valoran tu compromiso con la camiseta.'; }},
+      {label:'Presionar por más dinero', preview:'⚠️ Vas a ganar más, pero algunos te van a empezar a ver como un mercenario.',
+        apply:()=>{ career.fanLove=clamp(career.fanLove-6,0,100); career.rating=clamp(career.rating+1,20,99);
+        return 'Conseguís mejores condiciones, pero algunos te empiezan a ver como un mercenario.'; }}
     ]
   });
 
   if(otherTeams.length){
     pool.push({
-      title:'Mensaje privado por Discord',
-      desc:`El capitán de ${rivalTeam.name} te tira un DM: quiere ficharte para la próxima temporada de la liga.`,
+      title:'Sondeo de otro club',
+      desc:`El técnico de ${rivalTeam.name} te tira un sondeo informal: quiere sumarte a su plantel para la próxima temporada.`,
       options:[
-        {label:`Escuchar la propuesta de ${rivalTeam.name}`, apply:()=>{
+        {label:`Escuchar la propuesta de ${rivalTeam.name}`, preview:'⚠️ Te vas a ir de tu club actual y vas a perder cariño ahí, pero arrancás de cero en otro lado.',
+          apply:()=>{
           career.teamId = rivalTeam.id; career.fanLove=clamp(career.fanLove-15,0,100); career.form=clamp(career.form+6,0,100);
-          return `Cerrás el pase a ${rivalTeam.name}. Nuevo tag en el nombre, nueva presión.`; }},
-        {label:'Quedarte donde estás', apply:()=>{ career.fanLove=clamp(career.fanLove+8,0,100);
-          return `Decidís seguir en ${team.name}. El clan lo festeja en el chat de voz.`; }}
+          return `Cerrás tu pase a ${rivalTeam.name}. Nueva camiseta, nueva presión.`; }},
+        {label:'Quedarte donde estás', preview:'La hinchada de tu club lo va a festejar.',
+          apply:()=>{ career.fanLove=clamp(career.fanLove+8,0,100);
+          return `Decidís seguir en ${team.name}. La hinchada lo festeja.`; }}
       ]
     });
   }
 
   pool.push({
-    title:'Dolor de muñeca',
-    desc:'Después de una maratón de partidos sin parar, te empieza a doler la muñeca del mouse. El capitán te deja la decisión a vos.',
+    title:'Molestia física',
+    desc:'Terminás una práctica sintiendo una molestia muscular. El cuerpo técnico te deja la decisión a vos.',
     options:[
-      {label:'Jugar igual, el equipo te necesita', apply:()=>{ const bad=Math.random()<0.4;
+      {label:'Jugar igual, el equipo te necesita', preview:'⚠️ Hay riesgo de que se complique y bajes el nivel varias fechas.',
+        apply:()=>{ const bad=Math.random()<0.4;
         career.form=clamp(career.form+(bad?-18:6),0,100);
-        return bad? 'La molestia se complica y jugás varias fechas por debajo de tu nivel.' : 'Apretás los dientes y respondés igual.'; }},
-      {label:'Frenar una semana a descansar', apply:()=>{ career.form=clamp(career.form+4,0,100);
-        return 'Frenás a tiempo. La muñeca te lo va a agradecer.'; }}
+        return bad? 'La molestia se complica y jugás varias fechas por debajo de tu nivel.' : 'Apretás los dientes y el cuerpo responde bien.'; }},
+      {label:'Frenar una semana a descansar', preview:'El cuerpo te lo va a agradecer, sin sobresaltos.',
+        apply:()=>{ career.form=clamp(career.form+4,0,100);
+        return 'Frenás a tiempo. El cuerpo te lo va a agradecer.'; }}
     ]
   });
 
   pool.push({
-    title:'Juntada del clan',
-    desc:'Te invitan a una llamada de voz nocturna con todo el clan la noche antes de una fecha clave.',
+    title:'Salida con el plantel',
+    desc:'Te invitan a una juntada con el plantel la noche antes de un entrenamiento clave.',
     options:[
-      {label:'Sumarte un rato y desconectar temprano', apply:()=>{ career.form=clamp(career.form-2,0,100); career.fanLove=clamp(career.fanLove+2,0,100);
+      {label:'Ir un rato y volver temprano', preview:'Te mostrás cerca del grupo sin descuidarte del todo.',
+        apply:()=>{ career.form=clamp(career.form-2,0,100); career.fanLove=clamp(career.fanLove+2,0,100);
         return 'Te mostrás cerca del grupo sin descuidarte del todo.'; }},
-      {label:'Desconectarte temprano, foco total', apply:()=>{ career.form=clamp(career.form+5,0,100);
+      {label:'Quedarte en casa, foco total', preview:'Nadie lo nota, pero el rendimiento sí.',
+        apply:()=>{ career.form=clamp(career.form+5,0,100);
         return 'Elegís el descanso. Nadie lo nota, pero el rendimiento sí.'; }}
     ]
   });
 
   if(career.age>=27){
     pool.push({
-      title:'Los nuevos del clan te miran distinto',
-      desc:`En ${team.name} empiezan a pedirte que ayudes a los jugadores nuevos que están recién arrancando en la sala.`,
+      title:'Los pibes te miran distinto',
+      desc:`En ${team.name} empiezan a pedirte que ayudes a los juveniles que suben de las inferiores.`,
       options:[
-        {label:'Aceptar el rol de referente', apply:()=>{ career.fanLove=clamp(career.fanLove+12,0,100);
-          return 'Te ganás el respeto de todo el Discord como líder del equipo.'; }},
-        {label:'Preferís enfocarte solo en tu juego', apply:()=>{ career.rating=clamp(career.rating+1,20,99);
+        {label:'Aceptar el rol de referente', preview:'Te ganás el respeto del vestuario como líder.',
+          apply:()=>{ career.fanLove=clamp(career.fanLove+12,0,100);
+          return 'Te ganás el respeto del vestuario como líder.'; }},
+        {label:'Preferís enfocarte solo en tu juego', preview:'Vas a rendir igual, pero algunos te ven distante.',
+          apply:()=>{ career.rating=clamp(career.rating+1,20,99);
           return 'Seguís rindiendo a tu nivel, aunque algunos te ven distante.'; }}
       ]
     });
@@ -1029,92 +1041,148 @@ function buildEvent(){
   if(career.age>=32){
     pool.push({
       title:'Pensás en el futuro',
-      desc:'Empezás a sentir que los reflejos ya no son los de antes. Algunos te preguntan cuándo pensás colgar el mouse.',
+      desc:'Empezás a sentir el paso de los años. Algunos te preguntan cuándo pensás retirarte.',
       options:[
-        {label:'Bajar la carga para cuidarte', apply:()=>{ career.form=clamp(career.form+6,0,100); career.rating=clamp(career.rating-1,20,99);
-          return 'Elegís cuidarte, aunque pierdas algo de reacción competitiva.'; }},
-        {label:'Seguir a tope como siempre', apply:()=>{ career.form=clamp(career.form-4,0,100); career.fanLove=clamp(career.fanLove+6,0,100);
-          return 'Te negás a bajar los brazos. La comunidad te admira por eso.'; }}
+        {label:'Bajar la carga para cuidarte', preview:'⚠️ Perdés algo de nivel competitivo, pero cuidás el cuerpo.',
+          apply:()=>{ career.form=clamp(career.form+6,0,100); career.rating=clamp(career.rating-1,20,99);
+          return 'Elegís cuidarte, aunque pierdas algo de ritmo competitivo.'; }},
+        {label:'Seguir a tope como siempre', preview:'⚠️ El cuerpo se resiente, pero la gente te va a admirar por no bajar los brazos.',
+          apply:()=>{ career.form=clamp(career.form-4,0,100); career.fanLove=clamp(career.fanLove+6,0,100);
+          return 'Te negás a bajar los brazos. La hinchada te admira por eso.'; }}
       ]
     });
   } else {
     pool.push({
-      title:'Convocatoria para el torneo de la comunidad',
-      desc:'Tu nombre empieza a sonar para representar a la liga en un torneo abierto contra otras comunidades.',
+      title:'Convocatoria a la selección',
+      desc:'Tu nombre empieza a sonar para una convocatoria de la selección por tu buen presente.',
       options:[
-        {label:'Aceptar con orgullo', apply:()=>{ career.fanLove=clamp(career.fanLove+10,0,100); career.form=clamp(career.form-3,0,100);
+        {label:'Aceptar con orgullo', preview:'⚠️ Mucha exposición, pero llegás más cansado a la pretemporada.',
+          apply:()=>{ career.fanLove=clamp(career.fanLove+10,0,100); career.form=clamp(career.form-3,0,100);
           return 'Sumás partidos de mucha exposición y presión extra.'; }},
-        {label:'Priorizar el descanso pensando en tu clan', apply:()=>{ career.form=clamp(career.form+5,0,100);
-          return 'Cuidás el nivel pensando en la temporada larga con tu equipo.'; }}
+        {label:'Priorizar el descanso pensando en tu club', preview:'Cuidás el nivel pensando en la temporada larga.',
+          apply:()=>{ career.form=clamp(career.form+5,0,100);
+          return 'Cuidás el nivel pensando en la temporada larga con tu club.'; }}
       ]
     });
   }
 
   pool.push({
-    title:'Polémica con el host',
-    desc:`En un partido de ${team.name} un gol quedó en duda por un bug raro de la física de la pelota. El host de la sala tiene que decidir si lo valida.`,
+    title:'Polémica arbitral',
+    desc:`En un partido de ${team.name} un fallo polémico del árbitro te saca de las casillas. Las cámaras te están apuntando.`,
     options:[
-      {label:'Reclamar fuerte en el chat', apply:()=>{ const mal=Math.random()<0.4;
+      {label:'Reclamar fuerte', preview:'⚠️ Hay riesgo de sanción, pero la hinchada banca a los que se plantan.',
+        apply:()=>{ const mal=Math.random()<0.4;
         career.fanLove=clamp(career.fanLove+6,0,100); career.form=clamp(career.form+(mal?-10:2),0,100);
-        return mal? 'Te ganás fama de conflictivo, pero tu clan te banca por plantarte.' : 'Reclamás con todo y el host termina dándote la razón.'; }},
-      {label:'Aceptar la decisión del host y seguir jugando', apply:()=>{ career.form=clamp(career.form+2,0,100);
-        return 'Preferís no hacer drama y seguir enfocado en el partido.'; }}
+        return mal? 'Te ganás fama de conflictivo, pero la hinchada te banca por plantarte.' : 'Reclamás con todo y no pasa a mayores.'; }},
+      {label:'Tragarte la bronca y seguir jugando', preview:'No arriesgás nada, seguís concentrado en el partido.',
+        apply:()=>{ career.form=clamp(career.form+2,0,100);
+        return 'Preferís no arriesgar nada y seguir enfocado en el partido.'; }}
     ]
   });
 
   pool.push({
-    title:'Video para el canal del clan',
-    desc:`${team.name} te pide grabar un video de highlights con tus mejores jugadas para el canal de YouTube del clan.`,
+    title:'Nota para el programa deportivo',
+    desc:`${team.name} te pide dar una nota en el programa deportivo local mostrando tu día a día.`,
     options:[
-      {label:'Prestarte a la producción', apply:()=>{ career.fanLove=clamp(career.fanLove+7,0,100);
-        return 'El video explota en el Discord y la gente te empieza a reconocer más.'; }},
-      {label:'Pasar, preferís bajo perfil', apply:()=>{ career.form=clamp(career.form+2,0,100);
+      {label:'Prestarte a la nota', preview:'La gente te empieza a reconocer más en la calle.',
+        apply:()=>{ career.fanLove=clamp(career.fanLove+7,0,100);
+        return 'La nota sale al aire y la gente te empieza a reconocer más.'; }},
+      {label:'Pasar, preferís bajo perfil', preview:'Seguís tu rutina normal, lejos de las cámaras.',
+        apply:()=>{ career.form=clamp(career.form+2,0,100);
         return 'Seguís tu rutina normal, lejos de las cámaras.'; }}
     ]
   });
 
   pool.push({
-    title:'Torneo comunitario con scouts',
-    desc:`Se viene un torneo abierto donde ${team.name} se mide contra los mejores de otras salas. Corre el rumor de que hay capitanes de otros clanes mirando.`,
+    title:'Torneo de verano con ojeadores',
+    desc:`Se viene un torneo amistoso donde ${team.name} se mide contra los mejores planteles de la zona. Corre el rumor de que hay ojeadores en la tribuna.`,
     options:[
-      {label:'Salir a buscar el partido de tu vida', apply:()=>{ const gran=Math.random()<0.5;
+      {label:'Salir a buscar el partido de tu vida', preview:'⚠️ Todo o nada: puede ser tu mejor noche o tu peor presión.',
+        apply:()=>{ const gran=Math.random()<0.5;
         career.rating=clamp(career.rating+(gran?2:-1),20,99); career.fanLove=clamp(career.fanLove+(gran?10:-3),0,100);
         return gran? 'Jugás el partido perfecto justo cuando más te miraban.' : 'La presión te jugó en contra y no fue tu mejor noche.'; }},
-      {label:'Jugar tu partido normal, sin pensar en quién mira', apply:()=>{ career.form=clamp(career.form+4,0,100);
+      {label:'Jugar tu partido normal, sin pensar en quién mira', preview:'Preferís no cambiar tu rutina por la ocasión.',
+        apply:()=>{ career.form=clamp(career.form+4,0,100);
         return 'Preferís no cambiar nada de tu rutina por la ocasión.'; }}
     ]
   });
 
   pool.push({
-    title:'Quilombo en el chat de voz',
-    desc:`Después de una mala racha, hay tensión adentro de ${team.name} y se arma un cruce feo en el chat de voz del equipo.`,
+    title:'Quilombo en el vestuario',
+    desc:`Después de una mala racha, hay tensión adentro de ${team.name} y se arma un cruce feo entre compañeros.`,
     options:[
-      {label:'Meterte a bajar los decibeles', apply:()=>{ career.fanLove=clamp(career.fanLove+8,0,100);
+      {label:'Meterte a bajar los decibeles', preview:'Te ganás el respeto del plantel por poner paños fríos.',
+        apply:()=>{ career.fanLove=clamp(career.fanLove+8,0,100);
         return 'Te ganás el respeto de tus compañeros por poner paños fríos.'; }},
-      {label:'Mantenerte al margen', apply:()=>{ career.form=clamp(career.form+3,0,100);
+      {label:'Mantenerte al margen', preview:'No te metés en quilombos ajenos.',
+        apply:()=>{ career.form=clamp(career.form+3,0,100);
         return 'No te metés en quilombos ajenos y seguís concentrado en lo tuyo.'; }}
     ]
   });
 
   pool.push({
-    title:'Auspicio de un canal chico',
-    desc:'Un canal chico de streaming de la comunidad te ofrece auspicio a cambio de usar su skin/tag en tus partidos.',
+    title:'Auspicio de una marca chica',
+    desc:'Una marca deportiva local te ofrece auspicio a cambio de usar su ropa en las prácticas.',
     options:[
-      {label:'Firmar el acuerdo', apply:()=>{ career.fanLove=clamp(career.fanLove+4,0,100);
-        return 'Empezás a aparecer con el tag del canal en cada partido.'; }},
-      {label:'Rechazarlo, no te convence', apply:()=>{ career.form=clamp(career.form+2,0,100);
+      {label:'Firmar el acuerdo', preview:'Empezás a aparecer con la marca puesta en cada entrenamiento.',
+        apply:()=>{ career.fanLove=clamp(career.fanLove+4,0,100);
+        return 'Empezás a aparecer con la marca puesta en cada entrenamiento.'; }},
+      {label:'Rechazarlo, no te convence', preview:'Preferís no atarte a nada por ahora.',
+        apply:()=>{ career.form=clamp(career.form+2,0,100);
         return 'Preferís no atarte a nada por ahora.'; }}
+    ]
+  });
+
+  pool.push({
+    title:'El partido a beneficio',
+    desc:'Organizan un partido a beneficio en tu semana libre: cracks de todos lados, estadio lleno, plata para una buena causa. Es hermoso... pero es cansador justo cuando tenías que descansar.',
+    options:[
+      {label:'Jugarlo', preview:'⚠️ Ayudás y la gente lo valora, pero llegás más cansado a la pretemporada.',
+        apply:()=>{ career.fanLove=clamp(career.fanLove+8,0,100); career.form=clamp(career.form-5,0,100);
+        return 'Jugaste el partido a beneficio con una sonrisa. La causa sumó y la gente lo agradeció; el cuerpo, un poco menos.'; }},
+      {label:'Priorizar el descanso', preview:'Tu cuerpo primero. Igual mandás plata.',
+        apply:()=>{ career.form=clamp(career.form+5,0,100);
+        return 'Priorizaste el descanso. Igual mandaste una donación, pero no jugaste.'; }}
+    ]
+  });
+
+  pool.push({
+    title:'Cambio de esquema',
+    desc:`El entrenador de ${team.name} quiere probar un esquema táctico distinto y tu posición en la cancha cambia.`,
+    options:[
+      {label:'Adaptarte sin quejarte', preview:'El técnico valora tu compromiso con el nuevo esquema.',
+        apply:()=>{ career.liderazgoBoost=true; career.fanLove=clamp(career.fanLove+3,0,100);
+        return 'Te adaptás sin drama. El técnico valora tu flexibilidad.'; }},
+      {label:'Plantear tu incomodidad', preview:'⚠️ Puede que te escuchen o que quedes pegado como conflictivo.',
+        apply:()=>{ const ok=Math.random()<0.5;
+        career.form=clamp(career.form+(ok?4:-6),0,100);
+        return ok? 'El técnico te escucha y ajusta el esquema pensando en vos.' : 'El técnico no te da el gusto y quedás algo relegado.'; }}
+    ]
+  });
+
+  pool.push({
+    title:'Título de goleador en juego',
+    desc:'Faltan pocas fechas y estás peleando arriba en la tabla de goleadores de la liga.',
+    options:[
+      {label:'Salir a buscar cada gol posible', preview:'⚠️ Podés meterte en la pelea por el título de goleador, a costa de jugar más individual.',
+        apply:()=>{ career.stats.pegada=clamp(career.stats.pegada+2,10,99); career.fanLove=clamp(career.fanLove-2,0,100);
+        return 'Te volcás al gol individual. Sumás protagonismo, aunque algún compañero lo nota.'; }},
+      {label:'Priorizar el resultado del equipo', preview:'El equipo por encima de las marcas personales.',
+        apply:()=>{ career.fanLove=clamp(career.fanLove+6,0,100);
+        return 'Priorizás al equipo por sobre cualquier marca personal. Se nota en el grupo.'; }}
     ]
   });
 
   if(career.age<=22){
     pool.push({
-      title:'Te prueban en la sala principal',
-      desc:`El capitán de ${team.name} empieza a meterte más seguido en los scrims con el plantel titular del clan.`,
+      title:'Te prueban con el plantel principal',
+      desc:`El entrenador de ${team.name} empieza a meterte más seguido en las prácticas con el plantel principal.`,
       options:[
-        {label:'Meter presión para ganarte un lugar', apply:()=>{ career.form=clamp(career.form+5,0,100); career.fanLove=clamp(career.fanLove+3,0,100);
-          return 'Te ganás la confianza del capitán a fuerza de laburo.'; }},
-        {label:'Ir con calma y sin apurar los tiempos', apply:()=>{ career.form=clamp(career.form+3,0,100);
+        {label:'Meter presión para ganarte un lugar', preview:'Te ganás la confianza del cuerpo técnico a fuerza de laburo.',
+          apply:()=>{ career.form=clamp(career.form+5,0,100); career.fanLove=clamp(career.fanLove+3,0,100);
+          return 'Te ganás la confianza del cuerpo técnico a fuerza de laburo.'; }},
+        {label:'Ir con calma y sin apurar los tiempos', preview:'Preferís no quemar etapas antes de tiempo.',
+          apply:()=>{ career.form=clamp(career.form+3,0,100);
           return 'Preferís no quemar etapas antes de tiempo.'; }}
       ]
     });
@@ -1126,17 +1194,21 @@ function buildEvent(){
 function renderEvent(){
   const ev = pendingEvent;
   return `
-    <div class="card rust">
-      <h2>${ev.title}</h2>
-      <p>${ev.desc}</p>
-      <div class="btn-row" style="flex-direction:column;align-items:stretch;">
-        ${ev.options.map((o,i)=>`<button class="option-btn" onclick="resolveEvent(${i})"><b>${o.label}</b></button>`).join('')}
+    <div class="card phase-in">
+      <div class="event-eyebrow">Pasan cosas</div>
+      <div class="event-title">${ev.title}</div>
+      <p class="muted" style="font-size:14px;">${ev.desc}</p>
+      <div class="event-options">
+        ${ev.options.map((o,i)=>`<button class="event-option" onclick="resolveEvent(${i})"><b>${o.label}</b><div class="preview">${o.preview||''}</div></button>`).join('')}
       </div>
     </div>`;
 }
 async function resolveEvent(i){
+  const before = career.form + career.fanLove + career.rating;
   const outcome = pendingEvent.options[i].apply();
+  const after = career.form + career.fanLove + career.rating;
   career.log.push({age:career.age, text: outcome});
+  career._lastVerdict = { good: after>=before, text: outcome };
   pendingEvent=null;
   const summary = simulateSeason();
   career.log.push({age:career.age, text: summary.text});
@@ -1189,6 +1261,15 @@ function simulateSeason(){
   const perfDelta = career.rating - 60;
   career.fanLove = clamp(career.fanLove + Math.round(perfDelta/12) + (wonLiga?6:0) + (wonCopa?3:0), 0, 100);
 
+  // rival de la temporada
+  const rq = career.rival.quality;
+  const rGoals = Math.max(0, Math.round(randInt(8,26) * (rq/70)));
+  const rAssists = Math.max(0, Math.round(randInt(4,16) * (rq/70)));
+  career.rival.goals += rGoals; career.rival.assists += rAssists;
+  const playerTotal = career.careerGoals + career.careerAssists;
+  const rivalTotal = career.rival.goals + career.rival.assists;
+  const rivalWonSeason = (rGoals+rAssists) > (goals+assists);
+
   let text = `Temporada con ${team.name}: ${apps} partidos`;
   if(career.position==='ARQ') text += `, ${cleanSheets} vallas invictas`;
   else text += `, ${goals} goles y ${assists} asistencias`;
@@ -1198,20 +1279,55 @@ function simulateSeason(){
   if(wonInternacional) text += ', además de gloria internacional';
   text += '.';
 
-  return {apps,goals,assists,cleanSheets,leaguePos,wonLiga,wonCopa,wonInternacional,text};
+  return {apps,goals,assists,cleanSheets,leaguePos,wonLiga,wonCopa,wonInternacional,text,
+    rGoals,rAssists,playerTotal,rivalTotal,rivalWonSeason};
 }
 
+function seasonGrade(s){
+  let g = 6 + (career.rating-60)/12 + (s.wonLiga?1.2:0) + (s.wonCopa?0.6:0) - (s.leaguePos>league.teams.length-2?0.8:0) + randRange(-0.4,0.4);
+  return clamp(Math.round(g*10)/10, 2.5, 10);
+}
+function seasonHeadline(s){
+  const team = findTeam(career.teamId);
+  if(s.wonLiga) return {h:'¡SE LES DIO TODO!', sub:`${team.name} gritó campeón y vos fuiste parte de esa historia.`};
+  if(s.wonCopa) return {h:'COPA EN LAS VITRINAS', sub:`${team.name} se quedó con un título y lo festejaron a lo grande.`};
+  if(s.rivalWonSeason) return {h:'EL RIVAL LE PASÓ EL TRAPO', sub:`${career.rival.name} metió ${s.rGoals} goles y este año te ganó la pulseada. La bronca es buena consejera.`};
+  if(!s.rivalWonSeason && (s.goals+s.assists)>0) return {h:'LE GANASTE LA MANO', sub:`Otra vez estuviste un paso adelante de ${career.rival.name}.`};
+  return {h:'TEMPORADA SIN SOBRESALTOS', sub:'Ni la gloria ni el bajón: una temporada más para sumar experiencia.'};
+}
 function renderSummary(){
   const s = career._lastSummary;
+  const team = findTeam(career.teamId);
   const canRetire = career.age>=30;
   const mustRetire = career.age>=41;
+  const grade = seasonGrade(s);
+  const hl = seasonHeadline(s);
+  const v = career._lastVerdict;
+  const items = [];
+  if(career.position==='ARQ'){
+    items.push({cls:'', ic:'🧤', text:`<b>${s.cleanSheets} vallas invictas</b> en ${s.apps} partidos.`});
+  } else {
+    items.push({cls:'', ic:'⚽🤝', text:`<b>${s.goals} gol${s.goals===1?'':'es'}</b> y <b>${s.assists} asistencia${s.assists===1?'':'s'}</b> en ${s.apps} partidos.`});
+  }
+  items.push({cls: s.leaguePos<=3?'pos':(s.leaguePos>=league.teams.length-1?'neg':''), ic:'🏁', text:`${team.name} terminó <b>${s.leaguePos}°</b> en la Liga.`});
+  items.push({cls: s.rivalWonSeason?'neg':'pos', ic:'⚡', text:`Tu archirrival <b>${career.rival.name}</b> hizo ${s.rGoals}G y ${s.rAssists}A ${s.rivalWonSeason?'y este año te ganó la temporada':'pero no te alcanzó este año'}. En el duelo general vas ${s.playerTotal>=s.rivalTotal?'adelante':'atrás'} ${s.playerTotal}-${s.rivalTotal} en goles+asistencias. Juega en ${career.rival.team}.`});
+  if(s.wonLiga) items.push({cls:'pos', ic:'🏆', text:`¡${team.name} se consagró <b>CAMPEÓN de Liga</b>!`});
+  else if(s.wonCopa) items.push({cls:'pos', ic:'🏆', text:`${team.name} se quedó con una <b>copa</b> esta temporada.`});
+  else if(s.leaguePos<=3) items.push({cls:'pos', ic:'📈', text:'Terminaron entre los mejores: el año que viene se pelea otra vez arriba.'});
+
   return `
-    <div class="card">
-      <h2>Cierre de temporada — ${career.age} años</h2>
-      <p>${s.text}</p>
-      <div class="btn-row">
-        ${!mustRetire? `<button class="btn gold" onclick="nextSeason()">Siguiente temporada</button>`:''}
-        ${canRetire? `<button class="btn rust" onclick="retireCareer()">Retirarme ahora</button>`:''}
+    <div class="card phase-in">
+      <div class="season-eyebrow"><span>Potrero Deportivo</span><span>${career.startYear + (career.age-16)} · Temporada ${career.age-15}</span></div>
+      <div class="season-headline">${hl.h}</div>
+      <div class="season-sub">${hl.sub}</div>
+      <div class="season-grade"><span class="l">Nota de la temporada</span><span class="n">${grade.toFixed(1)}</span></div>
+      ${v? `<div class="verdict-box ${v.good?'good':'bad'}">${v.good?'✅':'⚠️'} ${v.text}</div>` : ''}
+      <div class="season-feed">
+        ${items.map(it=>`<div class="season-feed-item ${it.cls}"><div class="ic">${it.ic}</div><div>${it.text}</div></div>`).join('')}
+      </div>
+      <div class="btn-row" style="flex-direction:column;align-items:stretch;">
+        ${!mustRetire? `<button class="btn gold" onclick="nextSeason()">Continuar</button>`:''}
+        ${canRetire? `<button class="btn ghost" onclick="retireCareer()">Retirarme ahora</button>`:''}
       </div>
       ${mustRetire? `<div class="muted" style="margin-top:8px;">A esta edad el cuerpo ya no da para más. Es hora de colgar los botines.</div>`:''}
     </div>`;
@@ -1283,44 +1399,114 @@ async function retireCareer(){
 }
 
 /* ================= CAREER: MAIN CARD (in-progress view) ================= */
+function marketValue(){
+  const base = career.rating*career.rating*140;
+  const ageFactor = career.age<27 ? 1+((27-career.age)*0.035) : 1-((career.age-27)*0.05);
+  const v = Math.max(20000, Math.round(base*Math.max(0.15,ageFactor)/1000)*1000);
+  return v>=1000000 ? `US$ ${(v/1000000).toFixed(1)}M` : `US$ ${Math.round(v/1000)}K`;
+}
+function idolatriaTier(v){
+  if(v>=90) return 'Ídolo total';
+  if(v>=65) return 'Referente';
+  if(v>=35) return 'Uno más';
+  if(v>=15) return 'Anónimo';
+  return 'Resistido';
+}
 function renderActiveCareerCard(){
   const team = findTeam(career.teamId);
   const labels = statLabels();
-  const initials = career.name.split(' ').map(w=>w[0]).slice(0,2).join('').toUpperCase();
+  const topStat = STAT_KEYS.reduce((a,b)=> career.stats[b]>career.stats[a]?b:a, STAT_KEYS[0]);
+  const canRetire = career.age>=30;
   return `
-  <div class="card idcard">
-    <div class="idcard-top">
-      <div class="idcard-number" style="background:${team&&team.badge?'transparent':(team?team.color:'#333')}">${team&&team.badge? `<img class="badge-full" src="${team.badge}">` : career.jerseyNumber}</div>
-      <div class="idcard-info">
-        <div class="pname">${career.name}</div>
-        <div class="pmeta">${posLabel(career.position)} · ${career.age} años · ${team?team.name:'sin club'} · pierna ${career.foot}</div>
+  <div class="dossier phase-in">
+    <div class="dossier-top">
+      <div class="dossier-rating">${career.rating}</div>
+      <div class="dossier-id">
+        <div class="dossier-name">${career.name} · ${posShort(career.position)} ${career.jerseyNumber}</div>
+        <div class="dossier-meta">${team?team.name:'Sin club'} · ${career.startYear+(career.age-16)} · ${career.age} AÑOS</div>
+        <div class="dossier-league">${league.name.toUpperCase()} · IDOLATRÍA ${career.fanLove}</div>
       </div>
-      <div class="idcard-rating">${career.rating}<small>OVR</small></div>
+      <div class="dossier-crest">
+        ${badgeHtml(team)}
+        <button class="dossier-retire" ${canRetire?'':'disabled'} onclick="${canRetire? 'confirmRetireFromDossier()':''}" title="Retirarme">🚪</button>
+      </div>
     </div>
-    <div class="stat-grid">
-      ${STAT_KEYS.map(k=>`<div class="stat"><div class="label"><span>${labels[k]}</span><span>${career.stats[k]}</span></div><div class="bar"><div style="width:${career.stats[k]}%"></div></div></div>`).join('')}
+    <div class="dossier-stats-row">
+      <div class="stat-box"><div class="n">${career.careerGoals}</div><div class="l">Goles</div></div>
+      <div class="stat-box"><div class="n">${career.careerAssists}</div><div class="l">Asistencias</div></div>
+      <div class="stat-box"><div class="n">${career.careerApps}</div><div class="l">Partidos</div></div>
+      <div class="stat-box"><div class="n">${career.trophies.ligas+career.trophies.copas+career.trophies.internacionales}</div><div class="l">Títulos</div></div>
     </div>
-    <div class="meters">
-      <div class="m">🔥 Forma: ${career.form}/100</div>
-      <div class="m">❤️ Cariño de la hinchada: ${career.fanLove}/100</div>
+    <div class="dossier-attrs-row">
+      ${STAT_KEYS.map(k=>`<div class="attr-box ${k===topStat?'top':''}"><div class="n">${career.stats[k]}</div><div class="l">${labels[k]}</div></div>`).join('')}
     </div>
-    <div class="meters">
-      <div class="m">🏆 Ligas: ${career.trophies.ligas} · Copas: ${career.trophies.copas} · Internacionales: ${career.trophies.internacionales}</div>
+    <div class="dossier-extra-row">
+      <div class="value-box"><div class="n money">${marketValue()}</div><div class="l">Valor</div></div>
+      <div class="value-box"><div class="n rival">${career.careerGoals+career.careerAssists}-${career.rival.goals+career.rival.assists}</div><div class="l">vs ${career.rival.name}</div></div>
     </div>
-    <div class="meters">
-      <div class="m">⚽ ${career.careerGoals} goles · 🎯 ${career.careerAssists} asistencias · 🎽 ${career.careerApps} partidos</div>
+    <div class="dossier-idolatria">
+      <div class="idolatria-caption"><span>${idolatriaTier(career.fanLove)}</span><b>${career.fanLove}/100</b></div>
+      <div class="idol-track"><div class="idol-fill" style="width:${career.fanLove}%"></div></div>
     </div>
+    ${(career.phase==='idle' && !career.usedTransferRequest) ? `<div class="dossier-transfer-btn"><button class="btn ghost" onclick="openTransferMarket()">💼 Pedir pase (una vez por carrera)</button></div>` : ''}
+    <div class="dossier-footer"><button onclick="toggleLog()">${career._showLog? 'OCULTAR BITÁCORA' : 'VER CARRERA'}</button></div>
   </div>`;
 }
+function toggleLog(){ career._showLog = !career._showLog; render(); }
 function renderLogCard(){
-  const items = career.log.slice(-8).reverse();
-  return `<div class="card">
+  if(!career._showLog) return '';
+  const items = career.log.slice(-10).reverse();
+  return `<div class="card phase-in">
     <h2>Bitácora</h2>
     <div class="ledger">
       ${items.map(l=>`<div class="ledger-row"><div class="age">${l.age}</div><div class="detail">${l.text}</div></div>`).join('')}
     </div>
   </div>`;
 }
+function confirmRetireFromDossier(){
+  if(confirm('¿Retirarte ahora? Tu carrera pasa al ranking y no se puede deshacer.')){ retireCareer(); }
+}
+
+/* ================= MERCADO DE PASES (pase único por carrera) ================= */
+function openTransferMarket(){
+  const otherTeams = league.teams.filter(t=>t.id!==career.teamId);
+  if(otherTeams.length<2){ toast('No hay suficientes equipos para armar el mercado'); return; }
+  const shuffled = [...otherTeams];
+  const offers = [];
+  for(let i=0;i<Math.min(4,shuffled.length);i++){ offers.push(shuffled.splice(randInt(0,shuffled.length-1),1)[0]); }
+  career._marketOffers = offers.map(t=>t.id);
+  career.phase='market';
+  render();
+}
+function renderMarket(){
+  const team = findTeam(career.teamId);
+  const offers = (career._marketOffers||[]).map(id=>findTeam(id)).filter(Boolean);
+  return `
+    <div class="card phase-in">
+      <h2>Mercado de pases</h2>
+      <div class="muted">Estas son las ofertas que llegaron. Podés pedir el pase una sola vez en toda tu carrera — usalo cuando de verdad te convenga.</div>
+      <div class="market-grid">
+        ${offers.map(t=>`
+          <button class="market-card" onclick="acceptTransfer('${t.id}')">
+            <div class="mk-top">${badgeHtml(t)}<div class="mk-name" style="color:${t.color}">${t.name}</div></div>
+            <div class="mk-note">Dejás ${team.name} y empezás de cero en la idolatría de la hinchada nueva.</div>
+          </button>`).join('')}
+      </div>
+      <div class="btn-row"><button class="btn ghost" onclick="cancelTransfer()">Mejor me quedo en ${team.name}</button></div>
+    </div>`;
+}
+async function acceptTransfer(teamId){
+  const newTeam = findTeam(teamId);
+  const oldTeam = findTeam(career.teamId);
+  career.teamId = teamId;
+  career.usedTransferRequest = true;
+  career.fanLove = clamp(Math.round(career.fanLove*0.4), 0, 100);
+  career.log.push({age:career.age, text:`Pide el pase y deja ${oldTeam.name} para sumarse a ${newTeam.name}.`});
+  career.phase='idle';
+  career._marketOffers=null;
+  await saveActiveCareer(); render(); toast(`Fichaste por ${newTeam.name}`);
+}
+function cancelTransfer(){ career.phase='idle'; career._marketOffers=null; render(); }
 
 /* ================= CAREER TAB DISPATCH ================= */
 function renderCarrera(){
@@ -1334,11 +1520,13 @@ function renderCarrera(){
     return renderCareerCreate() + hist;
   }
   if(career.phase==='draft') return renderDraft();
+  if(career.phase==='market') return renderMarket();
   let html = renderActiveCareerCard();
   if(career.phase==='training') html += renderTraining();
+  else if(career.phase==='training-choices') html += renderTrainingChoices();
   else if(career.phase==='event') html += renderEvent();
   else if(career.phase==='summary') html += renderSummary();
-  else html += `<div class="card"><div class="btn-row"><button class="btn gold" onclick="beginSeasonFlow()">Vivir la temporada ${career.age}</button></div></div>`;
+  else html += `<div class="card phase-in"><div class="btn-row" style="justify-content:center;"><button class="btn gold" onclick="beginSeasonFlow()">Vivir la temporada ${career.age}</button></div></div>`;
   html += renderLogCard();
   return html;
 }
