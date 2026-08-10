@@ -228,7 +228,8 @@
   .dossier-meta{font-family:'JetBrains Mono',monospace;font-size:11px;color:var(--text-dim);margin-top:4px;letter-spacing:0.5px;}
   .dossier-league{font-family:'JetBrains Mono',monospace;font-size:11px;color:var(--green);margin-top:2px;letter-spacing:0.5px;}
   .dossier-crest{display:flex;flex-direction:column;align-items:center;gap:6px;}
-  .dossier-crest .badge, .dossier-crest .badge-fallback{width:38px;height:38px;font-size:14px;}
+  .dossier-crest .badge-fallback{width:44px;height:44px;font-size:15px;}
+  .dossier-crest img.badge.dossier-badge{width:60px;height:60px;border-radius:0;object-fit:contain;border:none;background:transparent;filter:drop-shadow(0 4px 10px rgba(0,0,0,0.4));}
   .dossier-retire{background:none;border:1px solid var(--line-strong);border-radius:8px;color:var(--red);font-size:13px;cursor:pointer;padding:3px 7px;font-family:'JetBrains Mono',monospace;}
   .dossier-retire:disabled{opacity:0.25;cursor:not-allowed;}
   .dossier-stats-row, .dossier-attrs-row, .dossier-extra-row{display:grid;gap:8px;padding:0 20px 14px;}
@@ -850,35 +851,52 @@ async function pickTeam(id){
 const STAT_KEYS=['pegada','velocidad','gambeta','liderazgo','resistencia'];
 
 const COMMON_UPGRADES = [
-  {title:'Tarde de definición', desc:'Te quedaste pateando al arco después de cada práctica hasta que el remate salió solo.', gain:{pegada:3}},
-  {title:'Pique más seco', desc:'Encontraste el ángulo justo para pegarle fuerte sin perder precisión.', gain:{pegada:3}},
-  {title:'Arranques en seco', desc:'Sumaste series de velocidad pura al final de cada entrenamiento.', gain:{velocidad:3}},
-  {title:'Zancada más larga', desc:'Ganaste centímetros de zancada sin perder el equilibrio.', gain:{velocidad:3}},
-  {title:'Cambios de ritmo', desc:'Practicaste amagues hasta dominarlos con las dos piernas.', gain:{gambeta:3}},
-  {title:'Perfil cambiado', desc:'Empezaste a jugar con la pelota más pegada al pie en los espacios cortos.', gain:{gambeta:3}},
-  {title:'Voz de mando', desc:'Empezaste a organizar al equipo a los gritos, y te empezaron a escuchar.', gain:{liderazgo:3}},
-  {title:'Cabeza fría', desc:'Aprendiste a bajar la ansiedad del equipo en los momentos difíciles.', gain:{liderazgo:3}},
-  {title:'Pretemporada a fondo', desc:'Metiste la pretemporada más dura de tu carrera hasta ahora.', gain:{resistencia:3}},
-  {title:'Recuperación exprés', desc:'Mejoraste los tiempos de recuperación entre partido y partido.', gain:{resistencia:3}}
+  {title:'Tarde de definición', desc:'Te quedaste pateando al arco después de cada práctica hasta que el remate salió solo.', gain:{pegada:4}},
+  {title:'Pique más seco', desc:'Encontraste el ángulo justo para pegarle fuerte sin perder precisión.', gain:{pegada:4}},
+  {title:'Zurdazo de otra época', desc:'Le empezaste a pegar con un fierro que antes no tenías.', gain:{pegada:4}},
+  {title:'Arranques en seco', desc:'Sumaste series de velocidad pura al final de cada entrenamiento.', gain:{velocidad:4}},
+  {title:'Zancada más larga', desc:'Ganaste centímetros de zancada sin perder el equilibrio.', gain:{velocidad:4}},
+  {title:'Motorcito', desc:'Arrancás desde el fondo con la pelota atada y no te alcanzan ni en moto.', gain:{velocidad:4}},
+  {title:'Cambios de ritmo', desc:'Practicaste amagues hasta dominarlos con las dos piernas.', gain:{gambeta:4}},
+  {title:'Perfil cambiado', desc:'Empezaste a jugar con la pelota más pegada al pie en los espacios cortos.', gain:{gambeta:4}},
+  {title:'Pausas que descolocan', desc:'Aprendiste a parar la pelota justo cuando el rival se tira.', gain:{gambeta:4}},
+  {title:'Voz de mando', desc:'Empezaste a organizar al equipo a los gritos, y te empezaron a escuchar.', gain:{liderazgo:4}},
+  {title:'Cabeza fría', desc:'Aprendiste a bajar la ansiedad del equipo en los momentos difíciles.', gain:{liderazgo:4}},
+  {title:'Cerebro', desc:'Ves pases que no existen. El equipo juega a lo que vos digas.', gain:{liderazgo:4}},
+  {title:'Pretemporada a fondo', desc:'Metiste la pretemporada más dura de tu carrera hasta ahora.', gain:{resistencia:4}},
+  {title:'Recuperación exprés', desc:'Mejoraste los tiempos de recuperación entre partido y partido.', gain:{resistencia:4}},
+  {title:'Cuerpo de fierro', desc:'Los kinesiólogos ya no te ven casi nunca en la camilla.', gain:{resistencia:4}}
 ];
 const RARE_UPGRADES = [
-  {title:'Doble función', desc:'El entrenador te empezó a probar en dos posiciones y eso te obligó a mejorar en todo.', gain:{pegada:4, resistencia:3}},
-  {title:'Estudio de rivales', desc:'Te la pasaste mirando videos de rivales para anticipar mejor cada jugada.', gain:{liderazgo:4, gambeta:3}},
-  {title:'Explosión física', desc:'Un cambio en el gimnasio te hizo ganar potencia de golpe.', gain:{velocidad:4, pegada:3}},
-  {title:'Sociedad en ataque', desc:'Encontraste una conexión especial con un compañero que te hace mejor a vos también.', gain:{gambeta:4, liderazgo:3}},
-  {title:'Cambio de ritmo sin aflojar un día', desc:'Trote y explosión sin aflojar un día, para no avisar nunca cuándo salís.', gain:{velocidad:4, resistencia:2}}
+  {title:'Doble función', desc:'El entrenador te empezó a probar en dos posiciones y eso te obligó a mejorar en todo.', gain:{pegada:5, resistencia:3}},
+  {title:'Estudio de rivales', desc:'Te la pasaste mirando videos de rivales para anticipar mejor cada jugada.', gain:{liderazgo:5, gambeta:3}},
+  {title:'Explosión física', desc:'Un cambio en el gimnasio te hizo ganar potencia de golpe.', gain:{velocidad:5, pegada:3}},
+  {title:'Sociedad en ataque', desc:'Encontraste una conexión especial con un compañero que te hace mejor a vos también.', gain:{gambeta:5, liderazgo:3}},
+  {title:'Cambio de ritmo sin aflojar un día', desc:'Trote y explosión sin aflojar un día, para no avisar nunca cuándo salís.', gain:{velocidad:5, resistencia:3}}
 ];
 const MITICA_UPGRADES = [
-  {title:'Un año de otro planeta', desc:'Todo lo que intentaste te salió. Hasta los rivales lo reconocen.', gain:{pegada:6, velocidad:4, liderazgo:2}},
-  {title:'El físico de tu vida', desc:'Nunca estuviste tan fuerte. Corrés como si no te cansaras nunca.', gain:{velocidad:6, resistencia:6}},
-  {title:'Un paso adelante de todos', desc:'Aprendiste a leer el juego un instante antes que el resto.', gain:{gambeta:6, liderazgo:6}},
-  {title:'Nacido para esto', desc:'Un año de esos que solo tienen los que después se recuerdan para siempre.', gain:{pegada:5, gambeta:5, liderazgo:3, fanLove:15}}
+  {title:'Un año de otro planeta', desc:'Todo lo que intentaste te salió. Hasta los rivales lo reconocen.', gain:{pegada:8, velocidad:5, liderazgo:2}},
+  {title:'El físico de tu vida', desc:'Nunca estuviste tan fuerte. Corrés como si no te cansaras nunca.', gain:{velocidad:8, resistencia:7}},
+  {title:'Un paso adelante de todos', desc:'Aprendiste a leer el juego un instante antes que el resto.', gain:{gambeta:8, liderazgo:7}},
+  {title:'Nacido para esto', desc:'Un año de esos que solo tienen los que después se recuerdan para siempre.', gain:{pegada:6, gambeta:6, liderazgo:4, fanLove:15}}
 ];
+function upgradeMainStat(u){ return Object.keys(u.gain).find(k=>k!=='fanLove') || Object.keys(u.gain)[0]; }
 function rollUpgradeInstance(){
   const r = Math.random();
-  if(r<0.92){ return {...choice(COMMON_UPGRADES), rarity:'Común'}; }
-  if(r<0.985){ return {...choice(RARE_UPGRADES), rarity:'Rara'}; }
+  if(r<0.88){ return {...choice(COMMON_UPGRADES), rarity:'Común'}; }
+  if(r<0.98){ return {...choice(RARE_UPGRADES), rarity:'Rara'}; }
   return {...choice(MITICA_UPGRADES), rarity:'Mítica'};
+}
+function rollThreeUpgrades(){
+  const picks = []; const used = new Set(); let guard=0;
+  while(picks.length<3 && guard<60){
+    guard++;
+    const cand = rollUpgradeInstance();
+    const stat = upgradeMainStat(cand);
+    if(!used.has(stat)){ used.add(stat); picks.push(cand); }
+  }
+  while(picks.length<3){ picks.push(rollUpgradeInstance()); }
+  return picks;
 }
 function applyUpgrade(u){
   Object.keys(u.gain).forEach(k=>{
@@ -908,7 +926,7 @@ async function rollPreseason(){
     <h2 style="border:none;margin-top:16px;text-align:center;">Pretemporada ${year}</h2>
   </div>`;
   await new Promise(res=>setTimeout(res,650));
-  career._pendingUpgrades = [rollUpgradeInstance(), rollUpgradeInstance(), rollUpgradeInstance()];
+  career._pendingUpgrades = rollThreeUpgrades();
   career.phase='training-choices';
   await saveActiveCareer();
   render();
@@ -1000,10 +1018,10 @@ function buildEvent(){
     title:'Molestia física',
     desc:'Terminás una práctica sintiendo una molestia muscular. El cuerpo técnico te deja la decisión a vos.',
     options:[
-      {label:'Jugar igual, el equipo te necesita', preview:'⚠️ Hay riesgo de que se complique y bajes el nivel varias fechas.',
-        apply:()=>{ const bad=Math.random()<0.4;
+      {label:'Jugar igual, el equipo te necesita', preview:'⚠️ El riesgo baja si tenés buena Resistencia; si no, puede complicarse.',
+        apply:()=>{ const badChance = clamp(0.5 - career.stats.resistencia/230, 0.06, 0.5); const bad=Math.random()<badChance;
         career.form=clamp(career.form+(bad?-18:6),0,100);
-        return bad? 'La molestia se complica y jugás varias fechas por debajo de tu nivel.' : 'Apretás los dientes y el cuerpo responde bien.'; }},
+        return bad? 'La molestia se complica y jugás varias fechas por debajo de tu nivel.' : 'Tu físico responde bien y no pasa a mayores.'; }},
       {label:'Frenar una semana a descansar', preview:'El cuerpo te lo va a agradecer, sin sobresaltos.',
         apply:()=>{ career.form=clamp(career.form+4,0,100);
         return 'Frenás a tiempo. El cuerpo te lo va a agradecer.'; }}
@@ -1214,6 +1232,8 @@ async function resolveEvent(i){
   career.log.push({age:career.age, text: summary.text});
   career.phase='summary';
   career._lastSummary = summary;
+  const scoutTeam = rollScoutInterest();
+  career._scoutOffer = scoutTeam ? scoutTeam.id : null;
   updateRating();
   await saveActiveCareer();
   render();
@@ -1233,23 +1253,25 @@ function simulateSeason(){
   if(career.position==='ARQ'){
     cleanSheets = Math.round(apps*((career.stats.liderazgo+career.stats.resistencia)/280)*randRange(0.6,1.1));
   } else if(career.position==='DEL'){
-    goals = Math.round(apps*(career.stats.pegada/220)*randRange(0.6,1.3));
-    assists = Math.round(apps*(career.stats.gambeta/300)*randRange(0.4,1));
+    goals = Math.round(apps*((career.stats.pegada*0.55+career.stats.velocidad*0.45)/200)*randRange(0.6,1.3));
+    assists = Math.round(apps*(career.stats.gambeta/280)*randRange(0.4,1));
   } else if(career.position==='MED'){
-    goals = Math.round(apps*(career.stats.pegada/320)*randRange(0.4,1));
-    assists = Math.round(apps*(career.stats.gambeta/220)*randRange(0.6,1.2));
+    goals = Math.round(apps*((career.stats.pegada*0.5+career.stats.velocidad*0.5)/300)*randRange(0.4,1));
+    assists = Math.round(apps*(career.stats.gambeta/200)*randRange(0.6,1.2));
   } else {
-    goals = Math.round(apps*(career.stats.pegada/500)*randRange(0.2,0.8));
-    assists = Math.round(apps*(career.stats.gambeta/350)*randRange(0.3,0.8));
+    goals = Math.round(apps*((career.stats.pegada*0.5+career.stats.velocidad*0.5)/460)*randRange(0.2,0.8));
+    assists = Math.round(apps*(career.stats.gambeta/320)*randRange(0.3,0.8));
   }
   goals=Math.max(0,goals); assists=Math.max(0,assists); cleanSheets=Math.max(0,cleanSheets);
 
-  const teamPerf = clamp(team.strength*0.85 + career.rating*0.15 + randRange(-8,8), 20, 99);
+  // el liderazgo hace jugar mejor al equipo y facilita llegar a instancias finales
+  const teamPerf = clamp(team.strength*0.8 + career.rating*0.12 + (career.stats.liderazgo-50)*0.18 + randRange(-8,8), 20, 99);
   const n = Math.max(4, league.teams.length);
   let leaguePos = Math.round(((100-teamPerf)/100)*n)+randInt(-1,1);
   leaguePos = clamp(leaguePos,1,n);
-  const wonLiga = leaguePos===1 && Math.random()<0.55;
-  const wonCopa = !wonLiga && teamPerf>68 && Math.random()<0.28;
+  const liderazgoBoost = clamp((career.stats.liderazgo-50)/220, -0.1, 0.18);
+  const wonLiga = leaguePos===1 && Math.random()<(0.55+liderazgoBoost);
+  const wonCopa = !wonLiga && teamPerf>68 && Math.random()<(0.28+liderazgoBoost);
   const wonInternacional = wonLiga && teamPerf>82 && Math.random()<0.22;
 
   if(wonLiga) career.trophies.ligas++;
@@ -1281,6 +1303,21 @@ function simulateSeason(){
 
   return {apps,goals,assists,cleanSheets,leaguePos,wonLiga,wonCopa,wonInternacional,text,
     rGoals,rAssists,playerTotal,rivalTotal,rivalWonSeason};
+}
+
+/* interés espontáneo de otros clubes: más probable con buen liderazgo/rating,
+   más difícil cuanto más títulos tiene el club interesado */
+function rollScoutInterest(){
+  const others = league.teams.filter(t=>t.id!==career.teamId);
+  if(!others.length) return null;
+  const chance = clamp((career.stats.liderazgo + career.rating)/260, 0.05, 0.4);
+  if(Math.random()>=chance) return null;
+  const weighted = others.map(t=>({t, w: Math.max(1, 100 - (t.titles||0)*7 + (career.stats.liderazgo-50))}));
+  const totalW = weighted.reduce((s,x)=>s+x.w,0);
+  let r = Math.random()*totalW;
+  let picked = weighted[0].t;
+  for(const x of weighted){ if(r<x.w){ picked=x.t; break; } r-=x.w; }
+  return picked;
 }
 
 function seasonGrade(s){
@@ -1315,6 +1352,14 @@ function renderSummary(){
   else if(s.wonCopa) items.push({cls:'pos', ic:'🏆', text:`${team.name} se quedó con una <b>copa</b> esta temporada.`});
   else if(s.leaguePos<=3) items.push({cls:'pos', ic:'📈', text:'Terminaron entre los mejores: el año que viene se pelea otra vez arriba.'});
 
+  const scoutTeam = career._scoutOffer ? findTeam(career._scoutOffer) : null;
+  const scoutBox = scoutTeam ? `
+    <div class="verdict-box good" style="display:flex;align-items:center;gap:10px;flex-wrap:wrap;">
+      <div style="flex:1;min-width:180px;">🔎 Un ojeador de <b>${scoutTeam.name}</b> te vino a ver esta temporada y le gustó lo que vio.</div>
+      <button class="btn gold" style="font-size:12px;padding:8px 12px;" onclick="acceptScoutOffer()">Escuchar oferta</button>
+      <button class="btn ghost" style="font-size:12px;padding:8px 12px;" onclick="declineScoutOffer()">Seguir en ${team.name}</button>
+    </div>` : '';
+
   return `
     <div class="card phase-in">
       <div class="season-eyebrow"><span>Potrero Deportivo</span><span>${career.startYear + (career.age-16)} · Temporada ${career.age-15}</span></div>
@@ -1322,15 +1367,30 @@ function renderSummary(){
       <div class="season-sub">${hl.sub}</div>
       <div class="season-grade"><span class="l">Nota de la temporada</span><span class="n">${grade.toFixed(1)}</span></div>
       ${v? `<div class="verdict-box ${v.good?'good':'bad'}">${v.good?'✅':'⚠️'} ${v.text}</div>` : ''}
+      ${scoutBox}
       <div class="season-feed">
         ${items.map(it=>`<div class="season-feed-item ${it.cls}"><div class="ic">${it.ic}</div><div>${it.text}</div></div>`).join('')}
       </div>
       <div class="btn-row" style="flex-direction:column;align-items:stretch;">
-        ${!mustRetire? `<button class="btn gold" onclick="nextSeason()">Continuar</button>`:''}
-        ${canRetire? `<button class="btn ghost" onclick="retireCareer()">Retirarme ahora</button>`:''}
+        ${!mustRetire && !scoutTeam ? `<button class="btn gold" onclick="nextSeason()">Continuar</button>`:''}
+        ${canRetire && !scoutTeam ? `<button class="btn ghost" onclick="retireCareer()">Retirarme ahora</button>`:''}
       </div>
       ${mustRetire? `<div class="muted" style="margin-top:8px;">A esta edad el cuerpo ya no da para más. Es hora de colgar los botines.</div>`:''}
     </div>`;
+}
+async function acceptScoutOffer(){
+  const newTeam = findTeam(career._scoutOffer);
+  const oldTeam = findTeam(career.teamId);
+  if(!newTeam) return;
+  career.teamId = newTeam.id;
+  career.fanLove = clamp(Math.round(career.fanLove*0.5), 0, 100);
+  career.log.push({age:career.age, text:`Un ojeador de ${newTeam.name} lo convence y deja ${oldTeam.name} para sumarse a ese club.`});
+  career._scoutOffer = null;
+  await saveActiveCareer(); render(); toast(`Fichaste por ${newTeam.name}`);
+}
+async function declineScoutOffer(){
+  career._scoutOffer = null;
+  await saveActiveCareer(); render();
 }
 async function nextSeason(){
   career.age++;
@@ -1386,16 +1446,43 @@ async function retireCareer(){
     retireAge: career.age, tier: tier.name, score,
     goals: career.careerGoals, assists: career.careerAssists,
     trophies: career.trophies, flavor: choice(tier.lines),
+    rivalName: career.rival.name, rivalTeam: career.rival.team,
+    playerTotal: career.careerGoals+career.careerAssists, rivalTotal: career.rival.goals+career.rival.assists,
     timestamp: Date.now()
   };
   await saveHistoryEntry(entry);
   await saveLeaderboardEntry(entry);
   await clearActiveCareer();
+  await pruneHistoryToRecent(3);
   await loadHistory();
   await loadLeaderboard();
   tab='ranking';
   render();
-  toast('¡Carrera guardada en el ranking!');
+  const link = `${window.location.origin}${window.location.pathname}?career=${entry.id}`;
+  showCareerLinkToast(link);
+}
+async function pruneHistoryToRecent(keep){
+  const keys = localListPrefix('history:');
+  const withData = keys.map(k=>({k, v:localGet(k)})).filter(x=>x.v).map(x=>({k:x.k, entry:JSON.parse(x.v)}));
+  withData.sort((a,b)=>b.entry.timestamp-a.entry.timestamp);
+  withData.slice(keep).forEach(x=>localDelete(x.k));
+}
+function showCareerLinkToast(link){
+  const el = document.getElementById('app');
+  const box = document.createElement('div');
+  box.className = 'card phase-in';
+  box.innerHTML = `<h2>¡Carrera retirada!</h2>
+    <div class="muted">Se guardó en el ranking. Guardá este link para poder volver a ver esta carrera cuando quieras (funciona aunque se borre de tu historial local):</div>
+    <div class="row" style="margin-top:10px;">
+      <div><input type="text" id="careerLinkInput" readonly value="${link}" onclick="this.select()"></div>
+      <div style="flex:0;"><button class="btn gold" onclick="copyCareerLink()">Copiar</button></div>
+    </div>`;
+  el.prepend(box);
+}
+async function copyCareerLink(){
+  const input = document.getElementById('careerLinkInput');
+  try{ await navigator.clipboard.writeText(input.value); toast('Link copiado'); }
+  catch(e){ input.select(); toast('Copialo manualmente'); }
 }
 
 /* ================= CAREER: MAIN CARD (in-progress view) ================= */
@@ -1427,7 +1514,7 @@ function renderActiveCareerCard(){
         <div class="dossier-league">${league.name.toUpperCase()} · IDOLATRÍA ${career.fanLove}</div>
       </div>
       <div class="dossier-crest">
-        ${badgeHtml(team)}
+        ${badgeHtml(team, 'dossier-badge')}
         <button class="dossier-retire" ${canRetire?'':'disabled'} onclick="${canRetire? 'confirmRetireFromDossier()':''}" title="Retirarme">🚪</button>
       </div>
     </div>
@@ -1513,8 +1600,10 @@ function renderCarrera(){
   if(!career){
     let hist = '';
     if(history.length){
-      hist = `<div class="card"><h2>Tu historial</h2><div class="ledger">
-        ${history.map(h=>`<div class="ledger-row"><div class="age">${h.retireAge}a</div><div class="detail">${h.name} — <span class="tier-badge">${h.tier}</span></div><div class="num">${h.score} pts</div></div>`).join('')}
+      hist = `<div class="card"><h2>Tu historial</h2>
+        <div class="muted" style="margin-bottom:6px;">Se guardan tus últimas 3 carreras retiradas. Tocá una para volver a verla.</div>
+        <div class="ledger">
+        ${history.map(h=>`<div class="ledger-row" style="cursor:pointer;" onclick="window.location.search='?career=${h.id}'"><div class="age">${h.retireAge}a</div><div class="detail">${h.name} — <span class="tier-badge">${h.tier}</span></div><div class="num">${h.score} ⭐</div></div>`).join('')}
       </div></div>`;
     }
     return renderCareerCreate() + hist;
@@ -1543,12 +1632,13 @@ function renderRanking(){
     </div>`;
   }
   return `<div class="card"><h2>Ranking de ${league.name}</h2>
+    <div class="muted" style="margin-bottom:6px;">Ordenado por Puntos de Gloria ⭐ (goles, títulos, pico de nivel e idolatría de toda la carrera).</div>
     ${leaderboard.map((e,i)=>`
-      <div class="lb-row">
+      <div class="lb-row" style="cursor:pointer;" onclick="window.location.search='?career=${e.id}'">
         <div class="lb-pos">${i+1}</div>
         ${e.teamBadge? `<img class="badge" src="${e.teamBadge}">` : `<div class="badge-fallback" style="background:${e.teamColor||'#333'}">${teamInitials(e.team)}</div>`}
         <div class="lb-name"><b>${e.name}</b><span>${posLabel(e.position)} · ${e.team} · se retiró a los ${e.retireAge} · <span class="tier-badge">${e.tier}</span></span></div>
-        <div class="lb-score">${e.score}<div class="muted" style="font-size:11px;">${e.goals}g ${e.assists}a</div></div>
+        <div class="lb-score">${e.score} ⭐<div class="muted" style="font-size:11px;">${e.goals}g ${e.assists}a</div></div>
       </div>`).join('')}
   </div>`;
 }
