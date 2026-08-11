@@ -262,6 +262,21 @@
   .dice-shake{font-size:60px;display:inline-block;animation:diceShake .12s ease-in-out infinite;}
   @keyframes diceShake{0%{transform:rotate(-10deg) scale(1);}50%{transform:rotate(10deg) scale(1.06);}100%{transform:rotate(-10deg) scale(1);}}
 
+  /* ===== minijuego: 4 en línea ===== */
+  .c4-grid{display:grid;grid-template-columns:repeat(5,1fr);gap:7px;margin-top:12px;max-width:340px;margin-left:auto;margin-right:auto;}
+  .c4-cell{aspect-ratio:1;border-radius:8px;background:rgba(255,255,255,0.05);border:1px solid var(--edge);
+    display:flex;align-items:center;justify-content:center;font-family:'Archivo Black',sans-serif;font-size:20px;cursor:pointer;color:var(--text);}
+  .c4-cell:disabled{cursor:default;}
+  .c4-cell.x{color:#8fb2ff;}
+  .c4-cell.o{color:var(--red);}
+  .c4-cell.hint{border-color:var(--yellow);box-shadow:0 0 10px rgba(246,196,67,0.45);}
+
+  /* ===== minijuego: Simón dice ===== */
+  .simon-grid{display:grid;grid-template-columns:repeat(4,1fr);gap:9px;margin-top:12px;max-width:320px;margin-left:auto;margin-right:auto;}
+  .simon-tile{aspect-ratio:1;border-radius:10px;border:2px solid rgba(255,255,255,0.15);cursor:pointer;
+    transition:transform .1s ease, box-shadow .15s ease, filter .1s ease;}
+  .simon-tile.active{transform:scale(0.92);box-shadow:0 0 22px rgba(255,255,255,0.7);border-color:#fff;filter:brightness(1.5);}
+
   /* ===== tarjetas de mejora (3 caminos) ===== */
   .upgrade-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(140px,1fr));gap:8px;margin-top:12px;}
   .upgrade-card{
@@ -370,7 +385,7 @@ const FEET = [{v:'derecha',l:'Derecha'},{v:'izquierda',l:'Izquierda'},{v:'ambidi
 
 /* ================= CONFIG ================= */
 // Pegá acá la URL de tu Google Apps Script (paso 2 de la guía). Termina en /exec
-const APPS_SCRIPT_URL = 'https://script.google.com/macros/s/AKfycbyrd5OLGilDFzTWqOaNG0bF_-UIfK5ysIHD-0K9jWRrjgGpEeBM40AbZTsdjLgRaBtx/exec';
+const APPS_SCRIPT_URL = 'PEGA_TU_URL_DE_APPS_SCRIPT_ACA';
 
 /* ================= STORAGE HELPERS =================
    Lo COMPARTIDO (equipos, ranking) vive en tu Google Sheet.
@@ -1426,9 +1441,13 @@ function computeSeasonPerformance(){
   const n = Math.max(4, league.teams.length);
   let leaguePos = Math.round(((100-teamPerf)/100)*n)+randInt(-1,1);
   leaguePos = clamp(leaguePos,1,n);
-  const liderazgoBoost = clamp((career.stats.liderazgo-50)/220, -0.1, 0.18);
-  const ligaContention = leaguePos===1 && Math.random()<(0.6+liderazgoBoost);
-  const copaContention = !ligaContention && teamPerf>68 && Math.random()<(0.35+liderazgoBoost);
+  // pelear el título depende de un puntaje continuo (rendimiento + liderazgo), no de acertar el puesto 1 exacto
+  const liderazgoBoost = clamp((career.stats.liderazgo-50)/90, -0.2, 0.55);
+  const titleRaceScore = teamPerf + (career.stats.liderazgo-50)*0.25;
+  const ligaChance = clamp((titleRaceScore-52)/42 + liderazgoBoost*0.4, 0.04, 0.85);
+  const copaChance = clamp((titleRaceScore-42)/40 + liderazgoBoost*0.4, 0.05, 0.9);
+  const ligaContention = Math.random()<ligaChance;
+  const copaContention = !ligaContention && Math.random()<copaChance;
 
   career.careerApps += apps; career.careerGoals += goals; career.careerAssists += assists;
   const perfDelta = career.rating - 60;
@@ -1547,47 +1566,53 @@ function launchMinigame(type){
     window.customCupMinigame({type, career, team}, async (won)=>{ await finalizeSeason(!!won); });
     return;
   }
-  const dist = {};
-  let remaining = 1;
-  ZONES.forEach((z,i)=>{
-    const v = i===ZONES.length-1 ? remaining : Math.random()*remaining*0.7;
-    dist[z] = Math.round(v*100)/100;
-    remaining -= v;
-  });
-  career._minigame = { type, round:0, goals:0, shots:5, dist, done:false };
+  const variant = choice(['penales','cuatro','simon']);
+  if(variant==='penales'){
+    const dist = {};
+    let remaining = 1;
+    ZONES.forEach((z,i)=>{
+      const v = i===ZONES.length-1 ? remaining : Math.random()*remaining*0.7;
+      dist[z] = Math.round(v*100)/100;
+      remaining -= v;
+    });
+    career._minigame = { type, variant, round:0, goals:0, shots:5, dist, done:false };
+  } else if(variant==='cuatro'){
+    career._minigame = { type, variant, board:Array(25).fill(null), turn:'X', done:false, won:null };
+  } else {
+    career._minigame = { type, variant, round:1, maxRounds:5, sequence:[], playerIndex:0, phase:'idle', done:false, won:null };
+  }
   career.phase='minigame';
   render();
 }
+function minigameTitle(m){ return m.type==='liga' ? 'Definición del título de Liga' : 'Final de la Copa FuxBall'; }
+function renderMinigame(){
+  const m = career._minigame;
+  if(m.variant==='cuatro') return renderCuatroEnLinea();
+  if(m.variant==='simon') return renderSimonDice();
+  return renderPenales();
+}
+
+/* ---------- Variante 1: penales ---------- */
 function hintFor(zone){
   const pegada = career.stats.pegada;
   const noise = clamp(45 - pegada/2.2, 6, 45);
   const raw = career._minigame.dist[zone]*100 + randRange(-noise,noise);
   return Math.round(clamp(raw,4,92));
 }
-function renderMinigame(){
+function renderPenales(){
   const m = career._minigame;
   const team = findTeam(career.teamId);
-  const title = m.type==='liga' ? 'Definición del título de Liga' : 'Final de la Copa FuxBall';
-  if(m.done){
-    const won = m.goals>=3;
-    return `
-    <div class="card phase-in" style="text-align:center;padding:34px 22px;">
-      <div style="font-size:52px;">${won?'🏆':'😔'}</div>
-      <h2 style="text-align:center;border:none;">${won? '¡GANASTE LA DEFINICIÓN!' : 'No alcanzó esta vez'}</h2>
-      <div class="muted">Convertiste ${m.goals} de ${m.shots} penales.</div>
-      <div class="btn-row" style="justify-content:center;"><button class="btn gold" onclick="closeMinigame()">Continuar</button></div>
-    </div>`;
-  }
+  if(m.done){ return renderMinigameResult(m.goals>=3, `Convertiste ${m.goals} de ${m.shots} penales.`); }
   return `
     <div class="card phase-in">
-      <h2>${title}</h2>
+      <h2>${minigameTitle(m)}</h2>
       <div class="muted">Penal ${m.round+1} de ${m.shots} · Convertidos: ${m.goals} · ${team.name}</div>
-      <div class="muted" style="margin-bottom:10px;">El ojeador del rival te pasó un informe del arquero. Tu Pegada define qué tan confiable es el dato.</div>
+      <div class="muted" style="margin-bottom:10px;">El ojeador te pasó un informe del arquero. Tu Pegada define qué tan confiable es.</div>
       <div class="event-options">
         ${ZONES.map(z=>`
           <button class="event-option" onclick="resolveMinigameShot('${z}')">
             <b>${z.charAt(0).toUpperCase()+z.slice(1)}</b>
-            <div class="preview">Se tira para ese lado ~${hintFor(z)}% de las veces</div>
+            <div class="preview">Se tira ahí ~${hintFor(z)}% de las veces</div>
           </button>`).join('')}
       </div>
     </div>`;
@@ -1610,8 +1635,149 @@ async function resolveMinigameShot(zone){
   await saveActiveCareer();
   render();
 }
+
+/* ---------- Variante 2: 4 en línea ---------- */
+const C4_SIZE = 5, C4_WIN = 4;
+function c4Lines(idx){
+  const r = Math.floor(idx/C4_SIZE), c = idx%C4_SIZE;
+  return {r,c};
+}
+function c4CheckWin(board, symbol){
+  const dirs = [[0,1],[1,0],[1,1],[1,-1]];
+  for(let r=0;r<C4_SIZE;r++){
+    for(let c=0;c<C4_SIZE;c++){
+      if(board[r*C4_SIZE+c]!==symbol) continue;
+      for(const [dr,dc] of dirs){
+        let ok=true;
+        for(let k=1;k<C4_WIN;k++){
+          const nr=r+dr*k, nc=c+dc*k;
+          if(nr<0||nr>=C4_SIZE||nc<0||nc>=C4_SIZE||board[nr*C4_SIZE+nc]!==symbol){ ok=false; break; }
+        }
+        if(ok) return true;
+      }
+    }
+  }
+  return false;
+}
+function c4BestMove(board, symbol){
+  const other = symbol==='X'?'O':'X';
+  const empties = board.map((v,i)=>v?null:i).filter(v=>v!==null);
+  for(const i of empties){ const b=[...board]; b[i]=symbol; if(c4CheckWin(b,symbol)) return i; }
+  for(const i of empties){ const b=[...board]; b[i]=other; if(c4CheckWin(b,other)) return i; }
+  const center = Math.floor(C4_SIZE*C4_SIZE/2);
+  empties.sort((a,b)=> Math.abs(a-center)-Math.abs(b-center));
+  return empties[0];
+}
+function renderCuatroEnLinea(){
+  const m = career._minigame;
+  const team = findTeam(career.teamId);
+  if(m.done){
+    return renderMinigameResult(m.won, m.won? 'Hiciste tus 4 en línea antes que el rival.' : 'El rival completó su línea primero.');
+  }
+  const pegada = career.stats.pegada;
+  let hintIdx = -1;
+  if(pegada>=60 && !m.board.some(v=>v)){ hintIdx = -1; }
+  else if(pegada>=55){
+    const cand = c4BestMove(m.board, 'X');
+    if(Math.random() < clamp(pegada/110, 0.3, 0.85)) hintIdx = cand;
+  }
+  return `
+    <div class="card phase-in">
+      <h2>${minigameTitle(m)}</h2>
+      <div class="muted">La jugada ensayada del entrenador: hacé <b style="color:var(--green);">4 en línea</b> (vos <b style="color:#8fb2ff;">X</b>) antes que ${career.rival.team} (<b style="color:var(--red);">O</b>) y sale el gol.</div>
+      <div class="c4-grid">
+        ${m.board.map((v,i)=>`<button class="c4-cell ${v==='X'?'x':v==='O'?'o':''} ${i===hintIdx?'hint':''}" onclick="c4PlayerMove(${i})" ${v?'disabled':''}>${v||''}</button>`).join('')}
+      </div>
+      <div class="muted" style="margin-top:8px;">Con buena Pegada, el entrenador te marca la mejor jugada.</div>
+    </div>`;
+}
+async function c4PlayerMove(i){
+  const m = career._minigame;
+  if(m.board[i]) return;
+  m.board[i]='X';
+  if(c4CheckWin(m.board,'X')){ m.done=true; m.won=true; await saveActiveCareer(); render(); return; }
+  if(!m.board.some(v=>!v)){ m.done=true; m.won = Math.random()<clamp(0.4+career.stats.pegada/300,0.3,0.7); await saveActiveCareer(); render(); return; }
+  const oIdx = c4BestMove(m.board,'O');
+  m.board[oIdx]='O';
+  if(c4CheckWin(m.board,'O')){ m.done=true; m.won=false; }
+  else if(!m.board.some(v=>!v)){ m.done=true; m.won = Math.random()<clamp(0.4+career.stats.pegada/300,0.3,0.7); }
+  await saveActiveCareer();
+  render();
+}
+
+/* ---------- Variante 3: Simón dice ---------- */
+const SIMON_COLORS = Array.from({length:16},(_,i)=>`hsl(${Math.round(i*22.5)},65%,55%)`);
+function renderSimonDice(){
+  const m = career._minigame;
+  const team = findTeam(career.teamId);
+  if(m.done){
+    return renderMinigameResult(m.won, m.won? `Aguantaste la presión hasta la ronda ${m.maxRounds}.` : `Te trabaste en la ronda ${m.round}.`);
+  }
+  const label = m.phase==='input' ? 'TU TURNO: REPETILA' : m.phase==='showing' ? 'MIRÁ BIEN...' : 'RONDA '+m.round;
+  return `
+    <div class="card phase-in">
+      <h2>${minigameTitle(m)}</h2>
+      <div class="muted" style="color:var(--green);font-family:'JetBrains Mono',monospace;letter-spacing:1px;">${label}</div>
+      <div class="simon-grid">
+        ${SIMON_COLORS.map((c,i)=>`<button class="simon-tile" id="simonTile${i}" style="background:${c};" onclick="clickSimonTile(${i})"></button>`).join('')}
+      </div>
+      ${m.phase==='idle'? `<div class="btn-row" style="justify-content:center;"><button class="btn gold" onclick="startSimonRound()">EMPEZAR</button></div>` : ''}
+      <div class="muted" style="margin-top:8px;">Tu Resistencia te ayuda a aguantar la concentración en rondas largas.</div>
+    </div>`;
+}
+async function startSimonRound(){
+  const m = career._minigame;
+  m.sequence.push(randInt(0,15));
+  m.phase='showing';
+  m.playerIndex=0;
+  render();
+  const speed = clamp(680 - career.stats.velocidad*3, 320, 680);
+  for(let i=0;i<m.sequence.length;i++){
+    await new Promise(r=>setTimeout(r,220));
+    const el = document.getElementById('simonTile'+m.sequence[i]);
+    if(el){ el.classList.add('active'); }
+    await new Promise(r=>setTimeout(r,speed));
+    if(el){ el.classList.remove('active'); }
+  }
+  m.phase='input';
+  render();
+}
+async function clickSimonTile(i){
+  const m = career._minigame;
+  if(m.phase!=='input') return;
+  const el = document.getElementById('simonTile'+i);
+  if(el){ el.classList.add('active'); setTimeout(()=>el.classList.remove('active'),150); }
+  if(i===m.sequence[m.playerIndex]){
+    m.playerIndex++;
+    if(m.playerIndex>=m.sequence.length){
+      if(m.round>=m.maxRounds){ m.done=true; m.won=true; await saveActiveCareer(); render(); return; }
+      m.round++;
+      m.phase='idle';
+      await saveActiveCareer();
+      render();
+      setTimeout(()=>startSimonRound(), 500);
+    }
+  } else {
+    // la Resistencia te da un margen de error en rondas avanzadas
+    const forgiveness = clamp((career.stats.resistencia-60)/300, 0, 0.18);
+    if(Math.random()<forgiveness){ toast('Por poco, pero la Resistencia te salva'); return; }
+    m.done=true; m.won=false;
+    await saveActiveCareer(); render();
+  }
+}
+
+function renderMinigameResult(won, detail){
+  return `
+    <div class="card phase-in" style="text-align:center;padding:34px 22px;">
+      <div style="font-size:52px;">${won?'🏆':'😔'}</div>
+      <h2 style="text-align:center;border:none;">${won? '¡GANASTE LA DEFINICIÓN!' : 'No alcanzó esta vez'}</h2>
+      <div class="muted">${detail}</div>
+      <div class="btn-row" style="justify-content:center;"><button class="btn gold" onclick="closeMinigame()">Continuar</button></div>
+    </div>`;
+}
 async function closeMinigame(){
-  const won = career._minigame.goals>=3;
+  const m = career._minigame;
+  const won = m.variant==='penales' ? m.goals>=3 : !!m.won;
   await finalizeSeason(won);
 }
 
