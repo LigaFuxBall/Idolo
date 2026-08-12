@@ -385,7 +385,7 @@ const FEET = [{v:'derecha',l:'Derecha'},{v:'izquierda',l:'Izquierda'},{v:'ambidi
 
 /* ================= CONFIG ================= */
 // Pegá acá la URL de tu Google Apps Script (paso 2 de la guía). Termina en /exec
-const APPS_SCRIPT_URL = 'https://script.google.com/macros/s/AKfycbyrd5OLGilDFzTWqOaNG0bF_-UIfK5ysIHD-0K9jWRrjgGpEeBM40AbZTsdjLgRaBtx/exec';
+const APPS_SCRIPT_URL = 'https://massimorizzoli26-coder.github.io/Idolo---Liga-FuxBall/';
 
 /* ================= STORAGE HELPERS =================
    Lo COMPARTIDO (equipos, ranking) vive en tu Google Sheet.
@@ -430,15 +430,18 @@ function localSet(key, value){ try{ localStorage.setItem(key, value); }catch(e){
 function localDelete(key){ try{ localStorage.removeItem(key); }catch(e){} }
 function localListPrefix(prefix){ try{ return Object.keys(localStorage).filter(k=>k.indexOf(prefix)===0); }catch(e){ return []; } }
 
+function safeParse(str, fallback){
+  try{ return JSON.parse(str); }catch(e){ return fallback; }
+}
 async function loadLeague(){
   const metaRaw = await remoteGet('league-meta');
-  const meta = metaRaw ? JSON.parse(metaRaw) : {};
+  const meta = metaRaw ? safeParse(metaRaw, {}) : {};
   league.name = meta.name || 'Mi Liga';
   league.pin = meta.pin || '';
   league.logo = meta.logo || null;
   const teamKeys = await remoteList('team:');
   const teamVals = await Promise.all(teamKeys.map(k=>remoteGet(k)));
-  league.teams = teamVals.filter(Boolean).map(v=>JSON.parse(v));
+  league.teams = teamVals.filter(Boolean).map(v=>safeParse(v,null)).filter(Boolean);
 }
 async function saveLeagueMeta(){
   await remoteSet('league-meta', JSON.stringify({name:league.name, pin:league.pin, logo:league.logo}));
@@ -460,7 +463,7 @@ function careerStatsValid(c){
 }
 async function loadActiveCareer(){
   const raw = localGet('active-career');
-  const parsed = raw ? JSON.parse(raw) : null;
+  const parsed = raw ? safeParse(raw,null) : null;
   if(parsed && !careerStatsValid(parsed)){
     localDelete('active-career');
     career = null;
@@ -476,7 +479,7 @@ async function loadHistory(){
   const raw = keys.map(k=>({k, v:localGet(k)})).filter(x=>x.v);
   history = [];
   raw.forEach(({k,v})=>{
-    const entry = JSON.parse(v);
+    const entry = safeParse(v,null);
     if(entry && !isNaN(entry.score)){ history.push(entry); } else { localDelete(k); }
   });
   history.sort((a,b)=>b.timestamp-a.timestamp);
@@ -492,7 +495,7 @@ async function loadLeaderboard(){
   keys.forEach((k,i)=>{
     const v = vals[i];
     if(!v) return;
-    const entry = JSON.parse(v);
+    const entry = safeParse(v,null);
     if(entry && !isNaN(entry.score)){ leaderboard.push(entry); }
     else if(isAdmin){ remoteDelete(k); } // limpia entradas viejas rotas si estás en modo admin
   });
@@ -1932,8 +1935,9 @@ async function retireCareer(){
 }
 async function pruneHistoryToRecent(keep){
   const keys = localListPrefix('history:');
-  const withData = keys.map(k=>({k, v:localGet(k)})).filter(x=>x.v).map(x=>({k:x.k, entry:JSON.parse(x.v)}));
-  withData.sort((a,b)=>b.entry.timestamp-a.entry.timestamp);
+  const withData = keys.map(k=>({k, v:localGet(k)})).filter(x=>x.v)
+    .map(x=>({k:x.k, entry:safeParse(x.v,null)})).filter(x=>x.entry);
+  withData.sort((a,b)=>(b.entry.timestamp||0)-(a.entry.timestamp||0));
   withData.slice(keep).forEach(x=>localDelete(x.k));
 }
 function showCareerLinkToast(entry, link){
@@ -2236,12 +2240,13 @@ async function tryRenderCareerFromUrl(){
   const id = new URLSearchParams(window.location.search).get('career');
   if(!id) return false;
   document.body.innerHTML = `<div class="wrap" style="padding-top:40px;"><div class="card"><div class="spinner-row"><div class="spinner"></div><span>Buscando esa carrera…</span></div></div></div>`;
-  const raw = await remoteGet('leaderboard:'+id);
-  if(!raw){
-    document.body.innerHTML = `<div class="wrap" style="padding-top:40px;"><div class="card"><h2>No se encontró esa carrera</h2><div class="muted">Puede que el link esté mal o que la entrada se haya borrado.</div><div class="btn-row"><button class="btn gold" onclick="window.location.search=''">Volver al juego</button></div></div></div>`;
+  let raw;
+  try{ raw = await remoteGet('leaderboard:'+id); }catch(e){ raw = null; }
+  const entry = raw ? safeParse(raw,null) : null;
+  if(!entry){
+    document.body.innerHTML = `<div class="wrap" style="padding-top:40px;"><div class="card"><h2>No se encontró esa carrera</h2><div class="muted">Puede que el link esté mal, que la entrada se haya borrado, o que la base de datos no esté respondiendo.</div><div class="btn-row"><button class="btn gold" onclick="window.location.search=''">Volver al juego</button></div></div></div>`;
     return true;
   }
-  const entry = JSON.parse(raw);
   document.body.innerHTML = renderCareerDetail(entry);
   return true;
 }
@@ -2249,15 +2254,22 @@ async function tryRenderCareerFromUrl(){
 /* ================= INIT ================= */
 let leaderboardLoaded = false;
 async function init(){
-  const showedCareer = await tryRenderCareerFromUrl();
-  if(showedCareer) return;
-  document.getElementById('app').innerHTML = `<div class="card"><div class="spinner-row"><div class="spinner"></div><span>Cargando tu liga…</span></div></div>`;
-  await Promise.all([ checkStorage(), loadLeague(), loadActiveCareer(), loadHistory() ]);
-  render();
-  loadLeaderboard().then(()=>{
-    leaderboardLoaded = true;
-    if(tab==='ranking') render();
-  });
+  try{
+    const showedCareer = await tryRenderCareerFromUrl();
+    if(showedCareer) return;
+    document.getElementById('app').innerHTML = `<div class="card"><div class="spinner-row"><div class="spinner"></div><span>Cargando tu liga…</span></div></div>`;
+    const timeout = new Promise((_,rej)=>setTimeout(()=>rej(new Error('timeout')), 15000));
+    await Promise.race([ Promise.all([ checkStorage(), loadLeague(), loadActiveCareer(), loadHistory() ]), timeout ]);
+    render();
+    loadLeaderboard().then(()=>{
+      leaderboardLoaded = true;
+      if(tab==='ranking') render();
+    }).catch(()=>{ leaderboardLoaded = true; if(tab==='ranking') render(); });
+  }catch(e){
+    console.error('Error al iniciar', e);
+    const app = document.getElementById('app');
+    if(app) app.innerHTML = `<div class="card rust"><h2>No se pudo cargar</h2><p class="muted">Algo falló al conectar con la base de datos (revisá la URL de Apps Script o tu conexión). Probá recargar la página.</p><div class="btn-row"><button class="btn gold" onclick="window.location.reload()">Recargar</button></div></div>`;
+  }
 }
 init();
 </script>
