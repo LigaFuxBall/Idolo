@@ -379,7 +379,6 @@ const POSITIONS = [
   {v:'DEL', l:'Delantero'},
   {v:'MED', l:'Mediocampista'},
   {v:'DEF', l:'Defensor'},
-  {v:'ARQ', l:'Arquero'},
 ];
 const FEET = [{v:'derecha',l:'Derecha'},{v:'izquierda',l:'Izquierda'},{v:'ambidiestro',l:'Ambidiestro'}];
 
@@ -1104,6 +1103,7 @@ function buildEvent(){
     });
   } else {
     pool.push({
+      id:'convocatoria-seleccion', unique:true,
       title:'Convocatoria a la selección',
       desc:'Tu nombre empieza a sonar para una convocatoria de la selección por tu buen presente.',
       options:[
@@ -1267,6 +1267,7 @@ function buildEvent(){
   });
 
   pool.push({
+    id:'pibe-talones', unique:true,
     title:'El pibe que te pisa los talones',
     desc:`Sube de las inferiores de ${team.name} un juvenil que juega en tu misma posición y promete mucho.`,
     options:[
@@ -1280,6 +1281,7 @@ function buildEvent(){
   });
 
   pool.push({
+    id:'partido-homenaje', unique:true,
     title:'Partido homenaje',
     desc:`Organizan un partido homenaje a una gloria histórica de ${team.name} y te invitan a ser parte del equipo de gala.`,
     options:[
@@ -1293,6 +1295,7 @@ function buildEvent(){
   });
 
   pool.push({
+    id:'rumor-mercado',
     title:'Rumor de mercado',
     desc:`Un periodista tira al aire que ${team.name} te estaría por vender en el próximo mercado de pases, sin confirmación oficial.`,
     options:[
@@ -1345,6 +1348,7 @@ function buildEvent(){
   });
 
   pool.push({
+    id:'camiseta-10', unique:true,
     title:'La camiseta número 10',
     desc:`Queda libre la camiseta emblemática de ${team.name} y el cuerpo técnico te la ofrece a vos.`,
     options:[
@@ -1383,7 +1387,8 @@ function buildEvent(){
     ]
   });
 
-  return choice(pool);
+  const available = pool.filter(e => !e.unique || !(career.usedEvents||[]).includes(e.id));
+  return choice(available.length ? available : pool);
 }
 
 function renderEvent(){
@@ -1404,6 +1409,10 @@ async function resolveEvent(i){
   const after = career.form + career.fanLove + career.rating;
   career.log.push({age:career.age, text: outcome});
   career._lastVerdict = { good: after>=before, text: outcome };
+  if(pendingEvent.unique){
+    career.usedEvents = career.usedEvents || [];
+    career.usedEvents.push(pendingEvent.id);
+  }
   pendingEvent=null;
   const s = computeSeasonPerformance();
   await saveActiveCareer();
@@ -1414,8 +1423,29 @@ async function resolveEvent(i){
   }
 }
 
+function applyAgePotential(){
+  if(career.age<=23){
+    // potencial juvenil: puede seguir subiendo solo, además de las mejoras del dado
+    if(Math.random()<0.55){
+      const w = ratingWeights(career.position);
+      const k = Math.random()<0.6 ? STAT_KEYS.reduce((a,b)=> w[b]>w[a]?b:a, STAT_KEYS[0]) : choice(STAT_KEYS);
+      career.stats[k] = clamp(career.stats[k]+1,10,99);
+      career.log.push({age:career.age, text:`El potencial de la edad te suma +1 en ${statLabels()[k]}.`});
+    }
+  } else if(career.age>=31){
+    // después de los 30 el físico empieza a bajar de a poco
+    const declineChance = clamp((career.age-30)*0.11, 0.1, 0.55);
+    if(Math.random()<declineChance){
+      const physicalStats = ['velocidad','resistencia','gambeta'];
+      const k = choice(physicalStats);
+      career.stats[k] = clamp(career.stats[k]-1,10,99);
+      career.log.push({age:career.age, text:`El paso de los años te resta -1 en ${statLabels()[k]}.`});
+    }
+  }
+}
 function computeSeasonPerformance(){
   const team = findTeam(career.teamId);
+  applyAgePotential();
   const w = ratingWeights(career.position);
   let overall = STAT_KEYS.reduce((s,k)=>s+career.stats[k]*w[k],0);
   overall *= ageCurve(career.age);
@@ -1442,8 +1472,15 @@ function computeSeasonPerformance(){
   // el liderazgo hace jugar mejor al equipo y facilita llegar a instancias finales
   const teamPerf = clamp(team.strength*0.8 + career.rating*0.12 + (career.stats.liderazgo-50)*0.18 + randRange(-8,8), 20, 99);
   const n = Math.max(4, league.teams.length);
-  let leaguePos = Math.round(((100-teamPerf)/100)*n)+randInt(-1,1);
-  leaguePos = clamp(leaguePos,1,n);
+  // el puesto en la tabla se calcula rankeando a TODOS los equipos por su poder (equipos grandes tienden arriba),
+  // con algo de ruido por temporada y un empujón extra del propio equipo por vos
+  const seasonNoise = 10;
+  const standings = league.teams.map(t=>({
+    id: t.id,
+    score: t.strength + randRange(-seasonNoise, seasonNoise) + (t.id===team.id ? (career.rating-60)*0.2 + (career.stats.liderazgo-50)*0.12 : 0)
+  })).sort((a,b)=>b.score-a.score);
+  let leaguePos = standings.findIndex(x=>x.id===team.id)+1;
+  if(leaguePos<=0) leaguePos = n;
   // pelear el título depende de un puntaje continuo (rendimiento + liderazgo), no de acertar el puesto 1 exacto
   const liderazgoBoost = clamp((career.stats.liderazgo-50)/90, -0.2, 0.55);
   const titleRaceScore = teamPerf + (career.stats.liderazgo-50)*0.25;
@@ -1491,6 +1528,7 @@ async function finalizeSeason(won){
   let wonLiga=false, wonCopa=false, wonInternacional=false;
   if(s.ligaContention){
     wonLiga = won;
+    s.leaguePos = won ? 1 : 2; // si peleaste el título, terminás 1° o 2°, no un puesto random
   } else if(s.copaContention){
     wonCopa = won;
   }
@@ -1720,20 +1758,22 @@ function renderSimonDice(){
   return `
     <div class="card phase-in">
       <h2>${minigameTitle(m)}</h2>
-      <div class="muted" style="color:var(--green);font-family:'JetBrains Mono',monospace;letter-spacing:1px;">${label}</div>
+      <div class="muted" id="simonLabel" style="color:var(--green);font-family:'JetBrains Mono',monospace;letter-spacing:1px;">${label}</div>
       <div class="simon-grid">
         ${SIMON_COLORS.map((c,i)=>`<button class="simon-tile" id="simonTile${i}" style="background:${c};" onclick="clickSimonTile(${i})"></button>`).join('')}
       </div>
-      ${m.phase==='idle'? `<div class="btn-row" style="justify-content:center;"><button class="btn gold" onclick="startSimonRound()">EMPEZAR</button></div>` : ''}
+      ${m.sequence.length===0? `<div class="btn-row" style="justify-content:center;"><button class="btn gold" onclick="startSimonRound()">EMPEZAR</button></div>` : ''}
       <div class="muted" style="margin-top:8px;">Tu Resistencia te ayuda a aguantar la concentración en rondas largas.</div>
     </div>`;
 }
 async function startSimonRound(){
   const m = career._minigame;
+  const isFirst = m.sequence.length===0;
   m.sequence.push(randInt(0,15));
   m.phase='showing';
   m.playerIndex=0;
-  render();
+  if(isFirst){ render(); }
+  else { const lbl=document.getElementById('simonLabel'); if(lbl) lbl.textContent='MIRÁ BIEN...'; }
   const speed = clamp(680 - career.stats.velocidad*3, 320, 680);
   for(let i=0;i<m.sequence.length;i++){
     await new Promise(r=>setTimeout(r,220));
@@ -1743,7 +1783,7 @@ async function startSimonRound(){
     if(el){ el.classList.remove('active'); }
   }
   m.phase='input';
-  render();
+  const lbl2=document.getElementById('simonLabel'); if(lbl2) lbl2.textContent='TU TURNO: REPETILA';
 }
 async function clickSimonTile(i){
   const m = career._minigame;
@@ -1755,10 +1795,8 @@ async function clickSimonTile(i){
     if(m.playerIndex>=m.sequence.length){
       if(m.round>=m.maxRounds){ m.done=true; m.won=true; await saveActiveCareer(); render(); return; }
       m.round++;
-      m.phase='idle';
       await saveActiveCareer();
-      render();
-      setTimeout(()=>startSimonRound(), 500);
+      setTimeout(()=>startSimonRound(), 600);
     }
   } else {
     // la Resistencia te da un margen de error en rondas avanzadas
@@ -2019,7 +2057,7 @@ function renderActiveCareerCard(){
       <div class="idolatria-caption"><span>${idolatriaTier(career.fanLove)}</span><b>${career.fanLove}/100</b></div>
       <div class="idol-track"><div class="idol-fill" style="width:${career.fanLove}%"></div></div>
     </div>
-    ${(career.phase==='idle' && !career.usedTransferRequest) ? `<div class="dossier-transfer-btn"><button class="btn ghost" onclick="openTransferMarket()">💼 Pedir pase (una vez por carrera)</button></div>` : ''}
+    ${career.phase==='idle' ? `<div class="dossier-transfer-btn"><button class="btn ghost" onclick="openTransferMarket()">💼 Pedir pase</button></div>` : ''}
     <div class="dossier-footer"><button onclick="toggleLog()">${career._showLog? 'OCULTAR BITÁCORA' : 'VER CARRERA'}</button></div>
   </div>`;
 }
@@ -2051,7 +2089,7 @@ function playtimeDelta(team){
 function openTransferMarket(periodic){
   const otherTeams = league.teams.filter(t=>t.id!==career.teamId);
   career._marketFromPeriodic = !!periodic;
-  if(career.usedTransferRequest || otherTeams.length<2){
+  if(otherTeams.length<2){
     career._marketOffers = [];
   } else {
     const shuffled = [...otherTeams];
@@ -2094,7 +2132,7 @@ function renderMarket(){
   return `
     <div class="card phase-in">
       <h2>Mercado de pases</h2>
-      <div class="muted">${offers.length? 'El dado trajo estas ofertas. Elegí: ¿gloria o billetera? Podés pedir el pase a otro club una sola vez en toda tu carrera.' : 'Es momento de arreglar tu contrato. Ya usaste tu pase para irte a otro club esta carrera, así que por ahora solo podés renovar.'}</div>
+      <div class="muted">${offers.length? 'El dado trajo estas ofertas. Elegí: ¿gloria o billetera?' : 'Es momento de arreglar tu contrato.'}</div>
       <div class="market-grid">
         ${renewCard}
         ${offerCards}
