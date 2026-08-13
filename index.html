@@ -826,9 +826,10 @@ async function startDraft(){
   const foot=document.getElementById('cFoot').value;
   const weights=ratingWeights(position);
   const stats={};
+  const targetOverall = randInt(58,68); // apunta a una media inicial de ~60 a 70 tras aplicar los pesos por posición
   STAT_KEYS.forEach(k=>{
-    const base = 48 + Math.round((weights[k]-0.15)*90);
-    stats[k]=clamp(base+randInt(-5,8),35,78);
+    const base = targetOverall + Math.round((weights[k]-0.2)*60);
+    stats[k]=clamp(base+randInt(-4,4), 30, 85);
   });
   const otherTeams = league.teams.filter(t=>!career || t.id!==career.teamId);
   career = {
@@ -1424,28 +1425,50 @@ async function resolveEvent(i){
 }
 
 function applyAgePotential(){
-  if(career.age<=23){
-    // potencial juvenil: puede seguir subiendo solo, además de las mejoras del dado
-    if(Math.random()<0.55){
+  if(career.age<=24){
+    // potencial juvenil: en tus años jóvenes sos más propenso a llegar a una media alta
+    if(Math.random()<0.65){
       const w = ratingWeights(career.position);
       const k = Math.random()<0.6 ? STAT_KEYS.reduce((a,b)=> w[b]>w[a]?b:a, STAT_KEYS[0]) : choice(STAT_KEYS);
       career.stats[k] = clamp(career.stats[k]+1,10,99);
       career.log.push({age:career.age, text:`El potencial de la edad te suma +1 en ${statLabels()[k]}.`});
     }
   } else if(career.age>=31){
-    // después de los 30 el físico empieza a bajar de a poco
-    const declineChance = clamp((career.age-30)*0.11, 0.1, 0.55);
-    if(Math.random()<declineChance){
-      const physicalStats = ['velocidad','resistencia','gambeta'];
-      const k = choice(physicalStats);
-      career.stats[k] = clamp(career.stats[k]-1,10,99);
-      career.log.push({age:career.age, text:`El paso de los años te resta -1 en ${statLabels()[k]}.`});
+    // después de los 30 el físico empieza a bajar, y cada vez más rápido
+    const declineChance = clamp((career.age-30)*0.17, 0.14, 0.75);
+    const hits = career.age>=35 ? 2 : 1;
+    for(let i=0;i<hits;i++){
+      if(Math.random()<declineChance){
+        const physicalStats = ['velocidad','resistencia','gambeta'];
+        const k = choice(physicalStats);
+        career.stats[k] = clamp(career.stats[k]-1,10,99);
+        career.log.push({age:career.age, text:`El paso de los años te resta -1 en ${statLabels()[k]}.`});
+      }
     }
   }
+}
+function checkInjuryRisk(){
+  // si descompensás mucho el físico (subís todo menos Resistencia), el cuerpo pasa factura
+  const others = STAT_KEYS.filter(k=>k!=='resistencia');
+  const avgOthers = others.reduce((s,k)=>s+career.stats[k],0)/others.length;
+  const gap = avgOthers - career.stats.resistencia;
+  if(gap<=18) return false;
+  const chance = clamp((gap-18)/38, 0.05, 0.55);
+  return Math.random()<chance;
 }
 function computeSeasonPerformance(){
   const team = findTeam(career.teamId);
   applyAgePotential();
+  if(checkInjuryRisk()){
+    career.form = clamp(career.form-16,0,100);
+    const s = {teamId:team.id, apps:0, goals:0, assists:0, cleanSheets:0, leaguePos:null, teamPerf:team.strength,
+      n:Math.max(4,league.teams.length), ligaContention:false, copaContention:false, growthNote:'',
+      rGoals:0, rAssists:0, playerTotal:career.careerGoals+career.careerAssists,
+      rivalTotal:career.rival.goals+career.rival.assists, rivalWonSeason:true, injured:true};
+    career.log.push({age:career.age, text:`Una lesión por sobrecarga física (descompensaste el cuerpo con poca Resistencia) te deja afuera toda la temporada.`});
+    career._pendingSeason = s;
+    return s;
+  }
   const w = ratingWeights(career.position);
   let overall = STAT_KEYS.reduce((s,k)=>s+career.stats[k]*w[k],0);
   overall *= ageCurve(career.age);
@@ -1526,11 +1549,13 @@ async function finalizeSeason(won){
   const s = career._pendingSeason;
   const team = findTeam(s.teamId);
   let wonLiga=false, wonCopa=false, wonInternacional=false;
-  if(s.ligaContention){
-    wonLiga = won;
-    s.leaguePos = won ? 1 : 2; // si peleaste el título, terminás 1° o 2°, no un puesto random
-  } else if(s.copaContention){
-    wonCopa = won;
+  if(!s.injured){
+    if(s.ligaContention){
+      wonLiga = won;
+      s.leaguePos = won ? 1 : 2; // si peleaste el título, terminás 1° o 2°, no un puesto random
+    } else if(s.copaContention){
+      wonCopa = won;
+    }
   }
   if(wonLiga){
     career.trophies.ligas++;
@@ -1546,21 +1571,26 @@ async function finalizeSeason(won){
   }
   career.fanLove = clamp(career.fanLove + (wonLiga?8:0) + (wonCopa?4:0) + ((s.ligaContention||s.copaContention) && !won ? -3 : 0), 0, 100);
 
-  let text = `Temporada con ${team.name}: ${s.apps} partidos`;
-  if(career.position==='ARQ') text += `, ${s.cleanSheets} vallas invictas`;
-  else text += `, ${s.goals} goles y ${s.assists} asistencias`;
-  text += `. El equipo terminó ${s.leaguePos}° en la tabla`;
-  if(wonLiga) text += ' y se consagró CAMPEÓN de liga';
-  else if(wonCopa) text += ' y se quedó con una copa';
-  else if(s.ligaContention) text += '. Llegaron a la definición de liga pero no se pudo';
-  else if(s.copaContention) text += '. Llegaron a la final de copa pero no se pudo';
-  if(wonInternacional) text += ', además de gloria internacional';
-  text += '.';
-  text += s.growthNote;
+  let text;
+  if(s.injured){
+    text = `Pasás toda la temporada afuera por una lesión. ${team.name} sigue el campeonato sin vos mientras te recuperás.`;
+  } else {
+    text = `Temporada con ${team.name}: ${s.apps} partidos`;
+    if(career.position==='ARQ') text += `, ${s.cleanSheets} vallas invictas`;
+    else text += `, ${s.goals} goles y ${s.assists} asistencias`;
+    text += `. El equipo terminó ${s.leaguePos}° en la tabla`;
+    if(wonLiga) text += ' y se consagró CAMPEÓN de liga';
+    else if(wonCopa) text += ' y se quedó con una copa';
+    else if(s.ligaContention) text += '. Llegaron a la definición de liga pero no se pudo';
+    else if(s.copaContention) text += '. Llegaron a la final de copa pero no se pudo';
+    if(wonInternacional) text += ', además de gloria internacional';
+    text += '.';
+    text += s.growthNote;
+  }
   career.log.push({age:career.age, text});
 
   career._lastSummary = {...s, wonLiga, wonCopa, wonInternacional, text};
-  const scoutTeam = (wonLiga || wonCopa) ? null : rollScoutInterest();
+  const scoutTeam = (wonLiga || wonCopa || s.injured) ? null : rollScoutInterest();
   career._scoutOffer = scoutTeam ? scoutTeam.id : null;
   career._minigame = null;
   career._pendingSeason = null;
@@ -1925,6 +1955,7 @@ function seasonGrade(s){
 }
 function seasonHeadline(s){
   const team = findTeam(career.teamId);
+  if(s.injured) return {h:'UNA TEMPORADA PERDIDA', sub:'La lesión te sacó de las canchas todo el año.'};
   if(s.wonLiga) return {h:'¡SE LES DIO TODO!', sub:`${team.name} gritó campeón y vos fuiste parte de esa historia.`};
   if(s.wonCopa) return {h:'COPA EN LAS VITRINAS', sub:`${team.name} se quedó con un título y lo festejaron a lo grande.`};
   if(s.rivalWonSeason) return {h:'EL RIVAL LE PASÓ EL TRAPO', sub:`${career.rival.name} metió ${s.rGoals} goles y este año te ganó la pulseada. La bronca es buena consejera.`};
@@ -1940,16 +1971,21 @@ function renderSummary(){
   const hl = seasonHeadline(s);
   const v = career._lastVerdict;
   const items = [];
-  if(career.position==='ARQ'){
+  if(s.injured){
+    items.push({cls:'neg', ic:'🩹', text:'Pasaste toda la temporada en recuperación, sin sumar minutos.'});
+    items.push({cls:'', ic:'💡', text:'Tip: si subís mucho el resto de las stats y dejás la Resistencia muy abajo, el riesgo de lesión sube.'});
+  } else if(career.position==='ARQ'){
     items.push({cls:'', ic:'🧤', text:`<b>${s.cleanSheets} vallas invictas</b> en ${s.apps} partidos.`});
   } else {
     items.push({cls:'', ic:'⚽🤝', text:`<b>${s.goals} gol${s.goals===1?'':'es'}</b> y <b>${s.assists} asistencia${s.assists===1?'':'s'}</b> en ${s.apps} partidos.`});
   }
-  items.push({cls: s.leaguePos<=3?'pos':(s.leaguePos>=league.teams.length-1?'neg':''), ic:'🏁', text:`${team.name} terminó <b>${s.leaguePos}°</b> en la Liga.`});
-  items.push({cls: s.rivalWonSeason?'neg':'pos', ic:'⚡', text:`Tu archirrival <b>${career.rival.name}</b> hizo ${s.rGoals}G y ${s.rAssists}A ${s.rivalWonSeason?'y este año te ganó la temporada':'pero no te alcanzó este año'}. En el duelo general vas ${s.playerTotal>=s.rivalTotal?'adelante':'atrás'} ${s.playerTotal}-${s.rivalTotal} en goles+asistencias. Juega en ${career.rival.team}.`});
-  if(s.wonLiga) items.push({cls:'pos', ic:'🏆', text:`¡${team.name} se consagró <b>CAMPEÓN de Liga</b>!`});
-  else if(s.wonCopa) items.push({cls:'pos', ic:'🏆', text:`${team.name} se quedó con una <b>copa</b> esta temporada.`});
-  else if(s.leaguePos<=3) items.push({cls:'pos', ic:'📈', text:'Terminaron entre los mejores: el año que viene se pelea otra vez arriba.'});
+  if(!s.injured){
+    items.push({cls: s.leaguePos<=3?'pos':(s.leaguePos>=league.teams.length-1?'neg':''), ic:'🏁', text:`${team.name} terminó <b>${s.leaguePos}°</b> en la Liga.`});
+    items.push({cls: s.rivalWonSeason?'neg':'pos', ic:'⚡', text:`Tu archirrival <b>${career.rival.name}</b> hizo ${s.rGoals}G y ${s.rAssists}A ${s.rivalWonSeason?'y este año te ganó la temporada':'pero no te alcanzó este año'}. En el duelo general vas ${s.playerTotal>=s.rivalTotal?'adelante':'atrás'} ${s.playerTotal}-${s.rivalTotal} en goles+asistencias. Juega en ${career.rival.team}.`});
+    if(s.wonLiga) items.push({cls:'pos', ic:'🏆', text:`¡${team.name} se consagró <b>CAMPEÓN de Liga</b>!`});
+    else if(s.wonCopa) items.push({cls:'pos', ic:'🏆', text:`${team.name} se quedó con una <b>copa</b> esta temporada.`});
+    else if(s.leaguePos<=3) items.push({cls:'pos', ic:'📈', text:'Terminaron entre los mejores: el año que viene se pelea otra vez arriba.'});
+  }
 
   const scoutTeam = career._scoutOffer ? findTeam(career._scoutOffer) : null;
   const scoutBox = scoutTeam ? `
@@ -2084,6 +2120,14 @@ async function pruneHistoryToRecent(keep){
   withData.sort((a,b)=>(b.entry.timestamp||0)-(a.entry.timestamp||0));
   withData.slice(keep).forEach(x=>localDelete(x.k));
 }
+function renderPlayoffHistoryList(playoffHistory){
+  if(!playoffHistory || !playoffHistory.length) return '';
+  return `
+    <h3>Partidos importantes jugados</h3>
+    <div class="ledger">
+      ${playoffHistory.map(p=>`<div class="ledger-row"><div class="age">${p.year||''}</div><div class="detail">${p.won?'✅ Le ganaste a':'❌ Perdiste con'} ${p.teamName} (${p.competition==='liga'?'Liga':'Copa'})</div></div>`).join('')}
+    </div>`;
+}
 function showCareerLinkToast(entry, link){
   const el = document.getElementById('app');
   const box = document.createElement('div');
@@ -2095,6 +2139,7 @@ function showCareerLinkToast(entry, link){
       <div class="season-feed-item"><div class="ic">⚽🤝</div><div><b>${entry.goals} goles</b> y <b>${entry.assists} asistencias</b> en ${entry.apps} partidos.</div></div>
       <div class="season-feed-item pos"><div class="ic">🏆</div><div>Títulos personales: <b>${entry.trophies.ligas}</b> ligas, <b>${entry.trophies.copas}</b> copas, <b>${entry.trophies.internacionales}</b> internacionales.</div></div>
     </div>
+    ${renderPlayoffHistoryList(entry.playoffHistory)}
     ${topTeams.length? `
       <h3>Equipos más ganadores de la simulación</h3>
       <div class="ledger">
@@ -2396,6 +2441,7 @@ function renderCareerDetail(entry){
         <div class="season-feed">
           ${items.map(it=>`<div class="season-feed-item"><div class="ic">${it.ic}</div><div>${it.text}</div></div>`).join('')}
         </div>
+        ${renderPlayoffHistoryList(entry.playoffHistory)}
         <div class="btn-row"><button class="btn gold" onclick="window.location.search=''">Volver al juego</button></div>
       </div>
     </div>`;
