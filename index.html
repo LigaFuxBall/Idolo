@@ -1560,7 +1560,7 @@ async function finalizeSeason(won){
   career.log.push({age:career.age, text});
 
   career._lastSummary = {...s, wonLiga, wonCopa, wonInternacional, text};
-  const scoutTeam = (wonLiga || wonCopa) ? null : rollScoutInterest();
+  const scoutTeam = rollScoutInterest();
   career._scoutOffer = scoutTeam ? scoutTeam.id : null;
   career._minigame = null;
   career._pendingSeason = null;
@@ -1607,23 +1607,7 @@ function launchMinigame(type){
     window.customCupMinigame({type, career, team}, async (won)=>{ await finalizeSeason(!!won); });
     return;
   }
-  const others = league.teams.filter(t=>t.id!==career.teamId);
-  const shuffled = [...others];
-  const opps = [];
-  for(let i=0;i<Math.min(3,shuffled.length);i++){ opps.push(shuffled.splice(randInt(0,shuffled.length-1),1)[0]); }
-  while(opps.length<3 && others.length){ opps.push(choice(others)); }
-  career._playoff = { type, opponents: opps.map(t=>t.id), matchIndex:0, wins:0, results:[], showReveal:false };
-  career.phase='minigame';
-  startPlayoffMatch();
-}
-function playoffLabel(){
-  const p = career._playoff;
-  const base = p.type==='liga' ? 'Liga — partidos importantes' : 'Copa FuxBall — fase de grupos';
-  const opp = findTeam(p.opponents[p.matchIndex]);
-  return `${base} · Partido ${p.matchIndex+1}/3 vs ${opp?opp.name:''}`;
-}
-async function startPlayoffMatch(){
-  const variant = choice(['penales','cuatro','simon','zonaverde']);
+  const variant = choice(['penales','cuatro','simon']);
   if(variant==='penales'){
     const dist = {};
     let remaining = 1;
@@ -1632,78 +1616,44 @@ async function startPlayoffMatch(){
       dist[z] = Math.round(v*100)/100;
       remaining -= v;
     });
-    career._minigame = { variant, round:0, goals:0, shots:3, dist, done:false };
+    career._minigame = { type, variant, round:0, goals:0, shots:5, dist, done:false };
   } else if(variant==='cuatro'){
-    career._minigame = { variant, board:Array(25).fill(null), done:false, won:null };
-  } else if(variant==='simon'){
-    career._minigame = { variant, sequence: Array.from({length: randInt(4,6)}, ()=>randInt(0,15)), phase:'idle', playerIndex:0, done:false, won:null };
+    career._minigame = { type, variant, board:Array(25).fill(null), turn:'X', done:false, won:null };
   } else {
-    career._minigame = { variant, round:0, rounds:3, hits:0, pos:0, dir:1, running:false, done:false };
+    career._minigame = { type, variant, round:1, maxRounds:5, sequence:[], playerIndex:0, phase:'idle', done:false, won:null };
   }
-  await saveActiveCareer();
+  career.phase='minigame';
   render();
 }
-async function resolvePlayoffMatch(won){
-  const p = career._playoff;
-  const oppId = p.opponents[p.matchIndex];
-  p.results.push({teamId:oppId, won});
-  if(won) p.wins++;
-  career.playoffHistory = career.playoffHistory || [];
-  career.playoffHistory.push({
-    teamId: oppId, teamName: (findTeam(oppId)||{}).name||'', teamBadge: (findTeam(oppId)||{}).badge||null,
-    won, competition: p.type, year: career.startYear+(career.age-16)
-  });
-  p.showReveal = true;
-  await saveActiveCareer();
-  render();
-}
-async function continuePlayoff(){
-  const p = career._playoff;
-  p.matchIndex++;
-  p.showReveal = false;
-  if(p.matchIndex>=3){
-    const overallWon = p.wins>=2;
-    career._playoff=null;
-    career._minigame=null;
-    await finalizeSeason(overallWon);
-    return;
-  }
-  await startPlayoffMatch();
-}
-function renderPlayoffReveal(){
-  const p = career._playoff;
-  const last = p.results[p.results.length-1];
-  const opp = findTeam(last.teamId);
-  return `
-    <div class="card phase-in" style="text-align:center;padding:30px 22px;">
-      ${badgeHtml(opp,'dossier-badge')}
-      <h2 style="text-align:center;border:none;margin-top:10px;">${last.won? '¡GANASTE EL PARTIDO!' : 'PERDISTE EL PARTIDO'}</h2>
-      <div class="muted">${last.won? 'Le ganaste a' : 'Caíste ante'} ${opp?opp.name:''}. Llevás ${p.wins} de ${p.results.length} ganados.</div>
-      <div class="btn-row" style="justify-content:center;"><button class="btn gold" onclick="continuePlayoff()">${p.matchIndex+1>=3? 'Ver resultado final' : 'Siguiente partido'}</button></div>
-    </div>`;
-}
+function minigameTitle(m){ return m.type==='liga' ? 'Definición del título de Liga' : 'Final de la Copa FuxBall'; }
 function renderMinigame(){
-  const p = career._playoff;
-  if(p && p.showReveal) return renderPlayoffReveal();
   const m = career._minigame;
   if(m.variant==='cuatro') return renderCuatroEnLinea();
   if(m.variant==='simon') return renderSimonDice();
-  if(m.variant==='zonaverde') return renderZonaVerde();
   return renderPenales();
 }
 
-/* ---------- Variante 1: penales (sin porcentajes, más difícil) ---------- */
+/* ---------- Variante 1: penales ---------- */
+function hintFor(zone){
+  const pegada = career.stats.pegada;
+  const noise = clamp(45 - pegada/2.2, 6, 45);
+  const raw = career._minigame.dist[zone]*100 + randRange(-noise,noise);
+  return Math.round(clamp(raw,4,92));
+}
 function renderPenales(){
   const m = career._minigame;
+  const team = findTeam(career.teamId);
+  if(m.done){ return renderMinigameResult(m.goals>=3, `Convertiste ${m.goals} de ${m.shots} penales.`); }
   return `
     <div class="card phase-in">
-      <h2>${playoffLabel()}</h2>
-      <div class="muted">Penal ${m.round+1} de ${m.shots} · Convertidos: ${m.goals}</div>
-      <div class="muted" style="margin-bottom:10px;">Elegí a qué palo tirar. Esta vez no hay pistas del ojeador.</div>
+      <h2>${minigameTitle(m)}</h2>
+      <div class="muted">Penal ${m.round+1} de ${m.shots} · Convertidos: ${m.goals} · ${team.name}</div>
+      <div class="muted" style="margin-bottom:10px;">El ojeador te pasó un informe del arquero. Tu Pegada define qué tan confiable es.</div>
       <div class="event-options">
         ${ZONES.map(z=>`
           <button class="event-option" onclick="resolveMinigameShot('${z}')">
             <b>${z.charAt(0).toUpperCase()+z.slice(1)}</b>
+            <div class="preview">Se tira ahí ~${hintFor(z)}% de las veces</div>
           </button>`).join('')}
       </div>
     </div>`;
@@ -1716,19 +1666,23 @@ async function resolveMinigameShot(zone){
   for(const z of ZONES){ acc+=dist[z]; if(r<=acc){ keeperDive=z; break; } }
   const pegada = career.stats.pegada, velocidad = career.stats.velocidad;
   let goalChance;
-  if(zone===keeperDive){ goalChance = clamp(0.08 + (pegada+velocidad)/520, 0.06, 0.35); }
-  else { goalChance = clamp(0.55 + pegada/600, 0.5, 0.78); }
+  if(zone===keeperDive){ goalChance = clamp(0.12 + (pegada+velocidad)/420, 0.1, 0.55); }
+  else { goalChance = clamp(0.72 + pegada/450, 0.7, 0.95); }
   const scored = Math.random()<goalChance;
   if(scored) m.goals++;
   m.round++;
   career.log.push({age:career.age, text: scored? `Penal convertido, tiró a la ${zone}.` : `Penal errado, el arquero adivinó y se tiró a la ${keeperDive}.`});
-  if(m.round>=m.shots){ await resolvePlayoffMatch(m.goals>=2); return; }
+  if(m.round>=m.shots) m.done=true;
   await saveActiveCareer();
   render();
 }
 
 /* ---------- Variante 2: 4 en línea ---------- */
 const C4_SIZE = 5, C4_WIN = 4;
+function c4Lines(idx){
+  const r = Math.floor(idx/C4_SIZE), c = idx%C4_SIZE;
+  return {r,c};
+}
 function c4CheckWin(board, symbol){
   const dirs = [[0,1],[1,0],[1,1],[1,-1]];
   for(let r=0;r<C4_SIZE;r++){
@@ -1746,75 +1700,48 @@ function c4CheckWin(board, symbol){
   }
   return false;
 }
-function c4Windows(idx){
-  const dirs=[[0,1],[1,0],[1,1],[1,-1]];
-  const r=Math.floor(idx/C4_SIZE), c=idx%C4_SIZE;
-  const windows=[];
-  for(const [dr,dc] of dirs){
-    for(let start=-(C4_WIN-1); start<=0; start++){
-      const cells=[]; let ok=true;
-      for(let k=0;k<C4_WIN;k++){
-        const nr=r+dr*(start+k), nc=c+dc*(start+k);
-        if(nr<0||nr>=C4_SIZE||nc<0||nc>=C4_SIZE){ ok=false; break; }
-        cells.push(nr*C4_SIZE+nc);
-      }
-      if(ok) windows.push(cells);
-    }
-  }
-  return windows;
-}
-function c4EvalMove(board, idx, symbol){
-  const other = symbol==='X'?'O':'X';
-  let score=0;
-  for(const w of c4Windows(idx)){
-    const vals = w.map(i=>board[i]);
-    const countSym = vals.filter(v=>v===symbol).length;
-    const countOther = vals.filter(v=>v===other).length;
-    if(countOther===0) score += Math.pow(3,countSym);
-    if(countSym===0) score += Math.pow(2.4,countOther);
-  }
-  const center = Math.floor(C4_SIZE*C4_SIZE/2);
-  const r=Math.floor(idx/C4_SIZE), c=idx%C4_SIZE;
-  const cr=Math.floor(center/C4_SIZE), cc=center%C4_SIZE;
-  score += (C4_SIZE - (Math.abs(r-cr)+Math.abs(c-cc)))*0.3;
-  return score;
-}
 function c4BestMove(board, symbol){
   const other = symbol==='X'?'O':'X';
   const empties = board.map((v,i)=>v?null:i).filter(v=>v!==null);
   for(const i of empties){ const b=[...board]; b[i]=symbol; if(c4CheckWin(b,symbol)) return i; }
   for(const i of empties){ const b=[...board]; b[i]=other; if(c4CheckWin(b,other)) return i; }
-  const scored = empties.map(i=>({i, s:c4EvalMove(board,i,symbol)+randRange(0,1.6)}));
-  scored.sort((a,b)=>b.s-a.s);
-  return scored[0].i;
+  const center = Math.floor(C4_SIZE*C4_SIZE/2);
+  empties.sort((a,b)=> Math.abs(a-center)-Math.abs(b-center));
+  return empties[0];
 }
 function renderCuatroEnLinea(){
   const m = career._minigame;
+  const team = findTeam(career.teamId);
+  if(m.done){
+    return renderMinigameResult(m.won, m.won? 'Hiciste tus 4 en línea antes que el rival.' : 'El rival completó su línea primero.');
+  }
   const pegada = career.stats.pegada;
   let hintIdx = -1;
-  if(pegada>=55 && m.board.some(v=>v)){
+  if(pegada>=60 && !m.board.some(v=>v)){ hintIdx = -1; }
+  else if(pegada>=55){
     const cand = c4BestMove(m.board, 'X');
-    if(Math.random() < clamp(pegada/130, 0.2, 0.7)) hintIdx = cand;
+    if(Math.random() < clamp(pegada/110, 0.3, 0.85)) hintIdx = cand;
   }
   return `
     <div class="card phase-in">
-      <h2>${playoffLabel()}</h2>
-      <div class="muted">La jugada ensayada del entrenador: hacé <b style="color:var(--green);">4 en línea</b> (vos <b style="color:#8fb2ff;">X</b>) antes que el rival (<b style="color:var(--red);">O</b>) y sale el gol.</div>
+      <h2>${minigameTitle(m)}</h2>
+      <div class="muted">La jugada ensayada del entrenador: hacé <b style="color:var(--green);">4 en línea</b> (vos <b style="color:#8fb2ff;">X</b>) antes que ${career.rival.team} (<b style="color:var(--red);">O</b>) y sale el gol.</div>
       <div class="c4-grid">
         ${m.board.map((v,i)=>`<button class="c4-cell ${v==='X'?'x':v==='O'?'o':''} ${i===hintIdx?'hint':''}" onclick="c4PlayerMove(${i})" ${v?'disabled':''}>${v||''}</button>`).join('')}
       </div>
+      <div class="muted" style="margin-top:8px;">Con buena Pegada, el entrenador te marca la mejor jugada.</div>
     </div>`;
 }
 async function c4PlayerMove(i){
   const m = career._minigame;
   if(m.board[i]) return;
   m.board[i]='X';
-  if(c4CheckWin(m.board,'X')){ await resolvePlayoffMatch(true); return; }
-  if(!m.board.some(v=>!v)){ await resolvePlayoffMatch(Math.random()<clamp(0.4+career.stats.pegada/300,0.3,0.7)); return; }
+  if(c4CheckWin(m.board,'X')){ m.done=true; m.won=true; await saveActiveCareer(); render(); return; }
+  if(!m.board.some(v=>!v)){ m.done=true; m.won = Math.random()<clamp(0.4+career.stats.pegada/300,0.3,0.7); await saveActiveCareer(); render(); return; }
   const oIdx = c4BestMove(m.board,'O');
   m.board[oIdx]='O';
-  if(c4CheckWin(m.board,'O')){ await resolvePlayoffMatch(false); return; }
-  if(!m.board.some(v=>!v)){ await resolvePlayoffMatch(Math.random()<clamp(0.4+career.stats.pegada/300,0.3,0.7)); return; }
+  if(c4CheckWin(m.board,'O')){ m.done=true; m.won=false; }
+  else if(!m.board.some(v=>!v)){ m.done=true; m.won = Math.random()<clamp(0.4+career.stats.pegada/300,0.3,0.7); }
   await saveActiveCareer();
   render();
 }
@@ -1823,23 +1750,30 @@ async function c4PlayerMove(i){
 const SIMON_COLORS = Array.from({length:16},(_,i)=>`hsl(${Math.round(i*22.5)},65%,55%)`);
 function renderSimonDice(){
   const m = career._minigame;
-  const label = m.phase==='input' ? 'TU TURNO: REPETILA' : m.phase==='showing' ? 'MIRÁ BIEN...' : 'MEMORIZÁ LA JUGADA';
+  const team = findTeam(career.teamId);
+  if(m.done){
+    return renderMinigameResult(m.won, m.won? `Aguantaste la presión hasta la ronda ${m.maxRounds}.` : `Te trabaste en la ronda ${m.round}.`);
+  }
+  const label = m.phase==='input' ? 'TU TURNO: REPETILA' : m.phase==='showing' ? 'MIRÁ BIEN...' : 'RONDA '+m.round;
   return `
     <div class="card phase-in">
-      <h2>${playoffLabel()}</h2>
+      <h2>${minigameTitle(m)}</h2>
       <div class="muted" id="simonLabel" style="color:var(--green);font-family:'JetBrains Mono',monospace;letter-spacing:1px;">${label}</div>
       <div class="simon-grid">
         ${SIMON_COLORS.map((c,i)=>`<button class="simon-tile" id="simonTile${i}" style="background:${c};" onclick="clickSimonTile(${i})"></button>`).join('')}
       </div>
-      ${m.phase==='idle'? `<div class="btn-row" style="justify-content:center;"><button class="btn gold" onclick="startSimonShow()">EMPEZAR</button></div>` : ''}
-      <div class="muted" style="margin-top:8px;">Tu Resistencia te da margen si te equivocás.</div>
+      ${m.sequence.length===0? `<div class="btn-row" style="justify-content:center;"><button class="btn gold" onclick="startSimonRound()">EMPEZAR</button></div>` : ''}
+      <div class="muted" style="margin-top:8px;">Tu Resistencia te ayuda a aguantar la concentración en rondas largas.</div>
     </div>`;
 }
-async function startSimonShow(){
+async function startSimonRound(){
   const m = career._minigame;
+  const isFirst = m.sequence.length===0;
+  m.sequence.push(randInt(0,15));
   m.phase='showing';
   m.playerIndex=0;
-  render();
+  if(isFirst){ render(); }
+  else { const lbl=document.getElementById('simonLabel'); if(lbl) lbl.textContent='MIRÁ BIEN...'; }
   const speed = clamp(680 - career.stats.velocidad*3, 320, 680);
   for(let i=0;i<m.sequence.length;i++){
     await new Promise(r=>setTimeout(r,220));
@@ -1849,7 +1783,7 @@ async function startSimonShow(){
     if(el){ el.classList.remove('active'); }
   }
   m.phase='input';
-  const lbl=document.getElementById('simonLabel'); if(lbl) lbl.textContent='TU TURNO: REPETILA';
+  const lbl2=document.getElementById('simonLabel'); if(lbl2) lbl2.textContent='TU TURNO: REPETILA';
 }
 async function clickSimonTile(i){
   const m = career._minigame;
@@ -1858,65 +1792,34 @@ async function clickSimonTile(i){
   if(el){ el.classList.add('active'); setTimeout(()=>el.classList.remove('active'),150); }
   if(i===m.sequence[m.playerIndex]){
     m.playerIndex++;
-    if(m.playerIndex>=m.sequence.length){ await resolvePlayoffMatch(true); }
+    if(m.playerIndex>=m.sequence.length){
+      if(m.round>=m.maxRounds){ m.done=true; m.won=true; await saveActiveCareer(); render(); return; }
+      m.round++;
+      await saveActiveCareer();
+      setTimeout(()=>startSimonRound(), 600);
+    }
   } else {
+    // la Resistencia te da un margen de error en rondas avanzadas
     const forgiveness = clamp((career.stats.resistencia-60)/300, 0, 0.18);
     if(Math.random()<forgiveness){ toast('Por poco, pero la Resistencia te salva'); return; }
-    await resolvePlayoffMatch(false);
+    m.done=true; m.won=false;
+    await saveActiveCareer(); render();
   }
 }
 
-/* ---------- Variante 4: parar en la zona verde ---------- */
-function renderZonaVerde(){
-  const m = career._minigame;
-  const zoneWidth = clamp(14 + career.stats.pegada/6, 12, 34);
-  const zoneStart = 50 - zoneWidth/2;
+function renderMinigameResult(won, detail){
   return `
-    <div class="card phase-in">
-      <h2>${playoffLabel()}</h2>
-      <div class="muted">Intento ${m.round+1} de ${m.rounds} · Aciertos: ${m.hits}</div>
-      <div class="muted" style="margin-bottom:10px;">Frená la barra justo en la zona verde para meter el centro perfecto.</div>
-      <div style="position:relative;height:34px;background:rgba(255,255,255,0.06);border-radius:10px;overflow:hidden;border:1px solid var(--edge);">
-        <div style="position:absolute;top:0;bottom:0;left:${zoneStart}%;width:${zoneWidth}%;background:rgba(51,209,126,0.35);border-left:2px solid var(--green);border-right:2px solid var(--green);"></div>
-        <div id="zvMarker" style="position:absolute;top:2px;bottom:2px;left:0%;width:6px;background:var(--yellow);border-radius:3px;"></div>
-      </div>
-      <div class="btn-row" style="justify-content:center;"><button class="btn gold" id="zvBtn" onclick="zvAction()">${m.running? 'PARAR' : 'ARRANCAR'}</button></div>
+    <div class="card phase-in" style="text-align:center;padding:34px 22px;">
+      <div style="font-size:52px;">${won?'🏆':'😔'}</div>
+      <h2 style="text-align:center;border:none;">${won? '¡GANASTE LA DEFINICIÓN!' : 'No alcanzó esta vez'}</h2>
+      <div class="muted">${detail}</div>
+      <div class="btn-row" style="justify-content:center;"><button class="btn gold" onclick="closeMinigame()">Continuar</button></div>
     </div>`;
 }
-let zvRafId = null;
-function zvAction(){
+async function closeMinigame(){
   const m = career._minigame;
-  if(!m.running){
-    m.running = true; m.pos = 0; m.dir = 1;
-    const btn = document.getElementById('zvBtn'); if(btn) btn.textContent='PARAR';
-    const speed = clamp(1.6 + career.stats.velocidad/40, 1.4, 3.2);
-    const step = ()=>{
-      if(!m.running) return;
-      m.pos += m.dir*speed;
-      if(m.pos>=97){ m.pos=97; m.dir=-1; }
-      if(m.pos<=0){ m.pos=0; m.dir=1; }
-      const marker = document.getElementById('zvMarker');
-      if(marker) marker.style.left = m.pos+'%';
-      zvRafId = requestAnimationFrame(step);
-    };
-    zvRafId = requestAnimationFrame(step);
-  } else {
-    zvStop();
-  }
-}
-async function zvStop(){
-  const m = career._minigame;
-  m.running = false;
-  if(zvRafId){ cancelAnimationFrame(zvRafId); zvRafId=null; }
-  const zoneWidth = clamp(14 + career.stats.pegada/6, 12, 34);
-  const zoneStart = 50 - zoneWidth/2;
-  const hit = m.pos>=zoneStart && m.pos<=zoneStart+zoneWidth;
-  if(hit) m.hits++;
-  m.round++;
-  career.log.push({age:career.age, text: hit? 'Centro perfecto a la zona verde.' : 'El centro se te escapó de la zona.'});
-  if(m.round>=m.rounds){ await resolvePlayoffMatch(m.hits>=2); return; }
-  await saveActiveCareer();
-  render();
+  const won = m.variant==='penales' ? m.goals>=3 : !!m.won;
+  await finalizeSeason(won);
 }
 
 function seasonGrade(s){
@@ -2001,8 +1904,9 @@ async function nextSeason(){
     openTransferMarket(true);
     return;
   }
+  career.phase='training';
   await saveActiveCareer();
-  await rollPreseason();
+  render();
 }
 
 /* ================= RETIREMENT ================= */
@@ -2043,39 +1947,29 @@ function tierFor(score){
   if(score>=400) return {name:'Profesional Correcto', lines:LEGEND_LINES.mid};
   return {name:'Promesa que no fue', lines:LEGEND_LINES.low};
 }
-let isRetiring = false;
 async function retireCareer(){
-  if(isRetiring) return;
-  isRetiring = true;
-  const app = document.getElementById('app');
-  if(app) app.innerHTML = `<div class="card"><div class="spinner-row"><div class="spinner"></div><span>Cerrando tu carrera…</span></div></div>` + app.innerHTML;
-  try{
-    const score = computeScore();
-    const tier = tierFor(score);
-    const team = findTeam(career.teamId);
-    const entry = {
-      id: career.id, name: career.name, position: career.position, team: team?team.name:'', teamColor: team?team.color:'#888', teamBadge: team?team.badge:null,
-      retireAge: career.age, tier: tier.name, score,
-      goals: career.careerGoals, assists: career.careerAssists, apps: career.careerApps,
-      trophies: career.trophies, flavor: choice(tier.lines),
-      rivalName: career.rival.name, rivalTeam: career.rival.team,
-      playerTotal: career.careerGoals+career.careerAssists, rivalTotal: career.rival.goals+career.rival.assists,
-      playoffHistory: career.playoffHistory||[],
-      timestamp: Date.now()
-    };
-    await saveHistoryEntry(entry);
-    await saveLeaderboardEntry(entry);
-    await clearActiveCareer();
-    await pruneHistoryToRecent(3);
-    await loadHistory();
-    await loadLeaderboard();
-    tab='ranking';
-    render();
-    const link = `${window.location.origin}${window.location.pathname}?career=${entry.id}`;
-    showCareerLinkToast(entry, link);
-  } finally {
-    isRetiring = false;
-  }
+  const score = computeScore();
+  const tier = tierFor(score);
+  const team = findTeam(career.teamId);
+  const entry = {
+    id: career.id, name: career.name, position: career.position, team: team?team.name:'', teamColor: team?team.color:'#888', teamBadge: team?team.badge:null,
+    retireAge: career.age, tier: tier.name, score,
+    goals: career.careerGoals, assists: career.careerAssists, apps: career.careerApps,
+    trophies: career.trophies, flavor: choice(tier.lines),
+    rivalName: career.rival.name, rivalTeam: career.rival.team,
+    playerTotal: career.careerGoals+career.careerAssists, rivalTotal: career.rival.goals+career.rival.assists,
+    timestamp: Date.now()
+  };
+  await saveHistoryEntry(entry);
+  await saveLeaderboardEntry(entry);
+  await clearActiveCareer();
+  await pruneHistoryToRecent(3);
+  await loadHistory();
+  await loadLeaderboard();
+  tab='ranking';
+  render();
+  const link = `${window.location.origin}${window.location.pathname}?career=${entry.id}`;
+  showCareerLinkToast(entry, link);
 }
 async function pruneHistoryToRecent(keep){
   const keys = localListPrefix('history:');
@@ -2243,6 +2137,7 @@ function renderMarket(){
         ${renewCard}
         ${offerCards}
       </div>
+      <div class="btn-row"><button class="btn ghost" onclick="cancelTransfer()">Ahora no, seguir jugando</button></div>
     </div>`;
 }
 async function renewWithCurrentTeam(){
@@ -2266,12 +2161,12 @@ async function resolveMarketDone(){
   const wasPeriodic = career._marketFromPeriodic;
   career._marketOffers=null;
   career._marketFromPeriodic=false;
-  career.phase = 'idle';
-  await saveActiveCareer();
-  if(wasPeriodic){ await rollPreseason(); } else { render(); }
+  career.phase = wasPeriodic ? 'training' : 'idle';
+  await saveActiveCareer(); render();
 }
 
-function renderCarreraParts(){
+/* ================= CAREER TAB DISPATCH ================= */
+function renderCarrera(){
   if(!career){
     let hist = '';
     if(history.length){
@@ -2281,21 +2176,21 @@ function renderCarreraParts(){
         ${history.map(h=>`<div class="ledger-row" style="cursor:pointer;" onclick="window.location.search='?career=${h.id}'"><div class="age">${h.retireAge}a</div><div class="detail">${h.name} — <span class="tier-badge">${h.tier}</span></div><div class="num">${h.score} ⭐</div></div>`).join('')}
       </div></div>`;
     }
-    return {dossier:null, phase: renderCareerCreate() + hist};
+    return renderCareerCreate() + hist;
   }
-  if(career.phase==='draft') return {dossier:null, phase: renderDraft()};
-  if(career.phase==='market') return {dossier:null, phase: renderMarket()};
-  if(career.phase==='minigame') return {dossier:null, phase: renderMinigame()};
-  const dossier = renderActiveCareerCard();
-  let phaseHtml = '';
-  if(career.phase==='training-choices') phaseHtml = renderTrainingChoices();
-  else if(career.phase==='event') phaseHtml = renderEvent();
-  else if(career.phase==='summary') phaseHtml = renderSummary();
-  else phaseHtml = `<div class="card phase-in"><div class="btn-row" style="justify-content:center;"><button class="btn gold" onclick="beginSeasonFlow()">Vivir la temporada ${career.age}</button></div></div>`;
-  phaseHtml += renderLogCard();
-  return {dossier, phase: phaseHtml};
+  if(career.phase==='draft') return renderDraft();
+  if(career.phase==='market') return renderMarket();
+  if(career.phase==='minigame') return renderMinigame();
+  let html = renderActiveCareerCard();
+  if(career.phase==='training') html += renderTraining();
+  else if(career.phase==='training-choices') html += renderTrainingChoices();
+  else if(career.phase==='event') html += renderEvent();
+  else if(career.phase==='summary') html += renderSummary();
+  else html += `<div class="card phase-in"><div class="btn-row" style="justify-content:center;"><button class="btn gold" onclick="beginSeasonFlow()">Vivir la temporada ${career.age}</button></div></div>`;
+  html += renderLogCard();
+  return html;
 }
-async function beginSeasonFlow(){ await saveActiveCareer(); await rollPreseason(); }
+async function beginSeasonFlow(){ career.phase='training'; await saveActiveCareer(); render(); }
 
 /* ================= RANKING TAB ================= */
 function renderRanking(){
@@ -2324,36 +2219,15 @@ function setTab(t){
   if(t==='liga' && !isAdmin) return;
   tab=t; render();
 }
-let lastDossierHtml = null;
 function render(){
   const ligaBtn = document.getElementById('tabLigaBtn');
   if(ligaBtn) ligaBtn.style.display = isAdmin ? '' : 'none';
   if(tab==='liga' && !isAdmin) tab='carrera';
   document.querySelectorAll('nav.tabs button').forEach(b=>b.classList.toggle('active', b.dataset.tab===tab));
   const app=document.getElementById('app');
-  if(tab==='carrera'){
-    const {dossier, phase} = renderCarreraParts();
-    let dSlot = document.getElementById('dossierSlot');
-    let pSlot = document.getElementById('phaseSlot');
-    if(!dSlot || !pSlot || !app.contains(dSlot)){
-      app.innerHTML = `<div id="dossierSlot"></div><div id="phaseSlot"></div>`;
-      dSlot = document.getElementById('dossierSlot');
-      pSlot = document.getElementById('phaseSlot');
-      lastDossierHtml = null;
-    }
-    if(dossier===null){
-      if(dSlot.innerHTML!==''){ dSlot.innerHTML=''; }
-      lastDossierHtml = null;
-    } else if(dossier!==lastDossierHtml){
-      dSlot.innerHTML = dossier;
-      lastDossierHtml = dossier;
-    }
-    pSlot.innerHTML = phase;
-  } else {
-    lastDossierHtml = null;
-    if(tab==='liga') app.innerHTML = renderLiga();
-    else app.innerHTML = renderRanking();
-  }
+  if(tab==='liga') app.innerHTML = renderLiga();
+  else if(tab==='carrera') app.innerHTML = renderCarrera();
+  else app.innerHTML = renderRanking();
   const logoEl = document.getElementById('logoMark');
   if(logoEl){ logoEl.innerHTML = league.logo ? `<img src="${league.logo}">` : `<span></span><span></span><span></span>`; }
 }
