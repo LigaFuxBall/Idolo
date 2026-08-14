@@ -277,6 +277,28 @@
     transition:transform .1s ease, box-shadow .15s ease, filter .1s ease;}
   .simon-tile.active{transform:scale(0.92);box-shadow:0 0 22px rgba(255,255,255,0.7);border-color:#fff;filter:brightness(1.5);}
 
+  /* ===== minijuego: barra de etapas + camino de resultados ===== */
+  .mg-stages{display:flex;gap:4px;margin:12px 0;}
+  .mg-stages .seg{flex:1;height:6px;border-radius:4px;background:rgba(255,255,255,0.1);}
+  .mg-stages .seg.done{background:var(--green);}
+  .mg-stages .seg.current{background:var(--yellow);}
+  .mg-stage-labels{display:flex;gap:4px;margin-bottom:12px;}
+  .mg-stage-labels span{flex:1;text-align:center;font-family:'JetBrains Mono',monospace;font-size:8.5px;letter-spacing:0.5px;text-transform:uppercase;color:var(--text-dim);}
+  .mg-stage-labels span.current{color:var(--yellow);font-weight:700;}
+  .mg-opponent-box{background:rgba(255,255,255,0.05);border:1px solid var(--edge);border-radius:10px;padding:10px 14px;margin-bottom:12px;display:flex;align-items:center;gap:10px;}
+  .mg-opponent-box .lbl{font-family:'JetBrains Mono',monospace;font-size:9px;letter-spacing:1px;color:var(--text-dim);text-transform:uppercase;}
+  .mg-opponent-box .vs{font-family:'Archivo Black',sans-serif;font-size:15px;text-transform:uppercase;}
+  .mg-history{display:flex;flex-direction:column;gap:6px;margin-top:16px;}
+  .mg-history-row{display:flex;align-items:center;gap:9px;padding:8px 10px;background:rgba(255,255,255,0.03);border-radius:8px;border-left:3px solid var(--edge);animation:phaseIn .25s ease both;}
+  .mg-history-row.win{border-left-color:var(--green);}
+  .mg-history-row.lose{border-left-color:var(--red);}
+  .mg-history-row .stage{font-family:'JetBrains Mono',monospace;font-size:9px;color:var(--text-dim);text-transform:uppercase;width:60px;flex-shrink:0;}
+  .mg-history-row .mini-badge{width:22px;height:22px;object-fit:contain;flex-shrink:0;}
+  .mg-history-row .oppname{flex:1;font-size:13px;font-weight:600;}
+  .mg-history-row .result{font-family:'Archivo Black',sans-serif;font-size:11px;letter-spacing:0.5px;padding:2px 9px;border-radius:12px;}
+  .mg-history-row.win .result{background:rgba(51,209,126,0.2);color:var(--green);}
+  .mg-history-row.lose .result{background:rgba(240,86,122,0.2);color:var(--red);}
+
   /* ===== tarjetas de mejora (3 caminos) ===== */
   .upgrade-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(140px,1fr));gap:8px;margin-top:12px;}
   .upgrade-card{
@@ -706,7 +728,20 @@ function renderLiga(){
       <div class="btn-row"><button class="btn ghost" onclick="exportLeague()">Copiar respaldo</button></div>
       <textarea id="importBox" placeholder="Pegá acá un respaldo para restaurarlo…" style="width:100%;min-height:70px;margin-top:10px;padding:10px;font-family:'JetBrains Mono',monospace;font-size:11px;border:1px solid #cfc6a9;border-radius:3px;"></textarea>
       <div class="btn-row"><button class="btn ghost" onclick="importLeague()">Restaurar desde el texto de arriba</button></div>
+      <h3>Ranking</h3>
+      <div class="muted">Borra todas las carreras retiradas del ranking compartido. No se puede deshacer.</div>
+      <div class="btn-row"><button class="btn rust" onclick="resetRanking()">Reiniciar ranking</button></div>
     </div>`;
+}
+async function resetRanking(){
+  if(!canEditLeague()){ toast('La liga está bloqueada'); return; }
+  if(!confirm('¿Borrar TODAS las carreras del ranking compartido? Esto no se puede deshacer.')) return;
+  toast('Borrando ranking…');
+  const keys = await remoteList('leaderboard:');
+  for(const k of keys){ await remoteDelete(k); }
+  await loadLeaderboard();
+  toast('Ranking reiniciado');
+  if(tab==='ranking') render();
 }
 async function exportLeague(){
   const data = JSON.stringify(league);
@@ -1638,19 +1673,53 @@ function launchMinigame(type){
     return;
   }
   const others = league.teams.filter(t=>t.id!==career.teamId);
+  const stageNames = type==='copa'
+    ? ['Grupos','16avos','8vos','Cuartos','Semi','Final']
+    : ['Partido 1','Partido 2','Partido 3','Partido 4','Partido 5'];
+  const mode = type==='copa' ? 'knockout' : 'campaign';
+  const count = stageNames.length;
   const shuffled = [...others];
   const opps = [];
-  for(let i=0;i<Math.min(3,shuffled.length);i++){ opps.push(shuffled.splice(randInt(0,shuffled.length-1),1)[0]); }
-  while(opps.length<3 && others.length){ opps.push(choice(others)); }
-  career._playoff = { type, opponents: opps.map(t=>t.id), matchIndex:0, wins:0, results:[], showReveal:false };
+  for(let i=0;i<Math.min(count,shuffled.length);i++){ opps.push(shuffled.splice(randInt(0,shuffled.length-1),1)[0]); }
+  while(opps.length<count && others.length){ opps.push(choice(others)); }
+  career._playoff = { type, mode, stageNames, opponents: opps.map(t=>t.id), stageIndex:0, wins:0, results:[] };
   career.phase='minigame';
+  render(); // arma el marco una sola vez; de acá en más todo se actualiza sin volver a llamar a render()
+  updateStageHeader();
   startPlayoffMatch();
 }
-function playoffLabel(){
+function renderMinigame(){
+  return `
+    <div class="card phase-in">
+      <h2>${career._playoff.type==='liga' ? 'Liga — partidos importantes' : 'Copa FuxBall'}</h2>
+      <div id="mgStagesSlot"></div>
+      <div id="mgOpponentSlot"></div>
+      <div id="mgBoardSlot"></div>
+      <div id="mgHistorySlot" class="mg-history"></div>
+    </div>`;
+}
+function rebuildMinigameHistoryRows(){
   const p = career._playoff;
-  const base = p.type==='liga' ? 'Liga — partidos importantes' : 'Copa FuxBall — fase de grupos';
-  const opp = findTeam(p.opponents[p.matchIndex]);
-  return `${base} · Partido ${p.matchIndex+1}/3 vs ${opp?opp.name:''}`;
+  const histSlot = document.getElementById('mgHistorySlot');
+  if(!histSlot || !p) return;
+  histSlot.innerHTML = p.results.map((r,i)=>{
+    const opp = findTeam(r.teamId);
+    return `<div class="mg-history-row ${r.won?'win':'lose'}"><span class="stage">${p.stageNames[i]}</span>${badgeHtml(opp,'mini-badge')}<span class="oppname">${opp?opp.name:''}</span><span class="result">${r.won?'GANADO':'PERDIDO'}</span></div>`;
+  }).join('');
+}
+function updateStageHeader(){
+  const p = career._playoff;
+  const stagesSlot = document.getElementById('mgStagesSlot');
+  const oppSlot = document.getElementById('mgOpponentSlot');
+  if(stagesSlot){
+    stagesSlot.innerHTML = `
+      <div class="mg-stages">${p.stageNames.map((s,i)=>`<div class="seg ${i<p.stageIndex?'done':i===p.stageIndex?'current':''}"></div>`).join('')}</div>
+      <div class="mg-stage-labels">${p.stageNames.map((s,i)=>`<span class="${i===p.stageIndex?'current':''}">${s}</span>`).join('')}</div>`;
+  }
+  if(oppSlot){
+    const opp = findTeam(p.opponents[p.stageIndex]);
+    oppSlot.innerHTML = `<div class="mg-opponent-box">${badgeHtml(opp,'dossier-badge')}<div><div class="lbl">${p.stageNames[p.stageIndex]}</div><div class="vs">vs ${opp?opp.name:''}</div></div></div>`;
+  }
 }
 async function startPlayoffMatch(){
   const variant = choice(['penales','cuatro','simon','zonaverde']);
@@ -1664,78 +1733,69 @@ async function startPlayoffMatch(){
     });
     career._minigame = { variant, round:0, goals:0, shots:3, dist, done:false };
   } else if(variant==='cuatro'){
-    career._minigame = { variant, board:Array(25).fill(null), done:false, won:null };
+    career._minigame = { variant, board:Array(25).fill(null), done:false };
   } else if(variant==='simon'){
-    career._minigame = { variant, sequence: Array.from({length: randInt(4,6)}, ()=>randInt(0,15)), phase:'idle', playerIndex:0, done:false, won:null };
+    career._minigame = { variant, sequence: Array.from({length: randInt(4,6)}, ()=>randInt(0,15)), phase:'idle', playerIndex:0, done:false };
   } else {
     career._minigame = { variant, round:0, rounds:3, hits:0, pos:0, dir:1, running:false, done:false };
   }
   await saveActiveCareer();
-  render();
+  refreshBoard();
 }
-async function resolvePlayoffMatch(won){
+function refreshBoard(){
+  const slot = document.getElementById('mgBoardSlot');
+  if(!slot) return;
+  const m = career._minigame;
+  if(m.variant==='cuatro') slot.innerHTML = renderCuatroEnLineaBoard();
+  else if(m.variant==='simon') slot.innerHTML = renderSimonDiceBoard();
+  else if(m.variant==='zonaverde') slot.innerHTML = renderZonaVerdeBoard();
+  else slot.innerHTML = renderPenalesBoard();
+}
+async function appendHistoryRowAndAdvance(won){
   const p = career._playoff;
-  const oppId = p.opponents[p.matchIndex];
+  const oppId = p.opponents[p.stageIndex];
+  const opp = findTeam(oppId);
   p.results.push({teamId:oppId, won});
   if(won) p.wins++;
   career.playoffHistory = career.playoffHistory || [];
   career.playoffHistory.push({
-    teamId: oppId, teamName: (findTeam(oppId)||{}).name||'', teamBadge: (findTeam(oppId)||{}).badge||null,
-    won, competition: p.type, year: career.startYear+(career.age-16)
+    teamId:oppId, teamName: opp?opp.name:'', teamBadge: opp?opp.badge:null,
+    won, competition:p.type, year: career.startYear+(career.age-16), stage: p.stageNames[p.stageIndex]
   });
-  p.showReveal = true;
+  const histSlot = document.getElementById('mgHistorySlot');
+  if(histSlot){
+    const row = document.createElement('div');
+    row.className = 'mg-history-row '+(won?'win':'lose');
+    row.innerHTML = `<span class="stage">${p.stageNames[p.stageIndex]}</span>${badgeHtml(opp,'mini-badge')}<span class="oppname">${opp?opp.name:''}</span><span class="result">${won?'GANADO':'PERDIDO'}</span>`;
+    histSlot.appendChild(row);
+  }
   await saveActiveCareer();
-  render();
-}
-async function continuePlayoff(){
-  const p = career._playoff;
-  p.matchIndex++;
-  p.showReveal = false;
-  if(p.matchIndex>=3){
-    const overallWon = p.wins>=2;
-    career._playoff=null;
-    career._minigame=null;
+
+  const isLastStage = p.stageIndex+1 >= p.stageNames.length;
+  const eliminated = p.mode==='knockout' && !won;
+  if(eliminated || isLastStage){
+    const overallWon = p.mode==='knockout' ? (won && isLastStage) : (p.wins >= Math.ceil(p.stageNames.length/2));
+    await new Promise(r=>setTimeout(r,900));
+    career._playoff=null; career._minigame=null;
     await finalizeSeason(overallWon);
     return;
   }
+  p.stageIndex++;
+  updateStageHeader();
   await startPlayoffMatch();
-}
-function renderPlayoffReveal(){
-  const p = career._playoff;
-  const last = p.results[p.results.length-1];
-  const opp = findTeam(last.teamId);
-  return `
-    <div class="card phase-in" style="text-align:center;padding:30px 22px;">
-      ${badgeHtml(opp,'dossier-badge')}
-      <h2 style="text-align:center;border:none;margin-top:10px;">${last.won? '¡GANASTE EL PARTIDO!' : 'PERDISTE EL PARTIDO'}</h2>
-      <div class="muted">${last.won? 'Le ganaste a' : 'Caíste ante'} ${opp?opp.name:''}. Llevás ${p.wins} de ${p.results.length} ganados.</div>
-      <div class="btn-row" style="justify-content:center;"><button class="btn gold" onclick="continuePlayoff()">${p.matchIndex+1>=3? 'Ver resultado final' : 'Siguiente partido'}</button></div>
-    </div>`;
-}
-function renderMinigame(){
-  const p = career._playoff;
-  if(p && p.showReveal) return renderPlayoffReveal();
-  const m = career._minigame;
-  if(m.variant==='cuatro') return renderCuatroEnLinea();
-  if(m.variant==='simon') return renderSimonDice();
-  if(m.variant==='zonaverde') return renderZonaVerde();
-  return renderPenales();
 }
 
 /* ---------- Variante 1: penales (sin porcentajes, más difícil) ---------- */
-function renderPenales(){
+function renderPenalesBoard(){
   const m = career._minigame;
   return `
-    <div class="card phase-in">
-      <h2>${playoffLabel()}</h2>
-      <div class="muted">Penal ${m.round+1} de ${m.shots} · Convertidos: ${m.goals}</div>
-      <div class="muted" style="margin-bottom:10px;">Elegí a qué palo tirar. Esta vez no hay pistas del ojeador.</div>
-      <div class="event-options">
-        ${ZONES.map(z=>`
-          <button class="event-option" onclick="resolveMinigameShot('${z}')">
-            <b>${z.charAt(0).toUpperCase()+z.slice(1)}</b>
-          </button>`).join('')}
-      </div>
+    <div class="muted">Penal ${m.round+1} de ${m.shots} · Convertidos: ${m.goals}</div>
+    <div class="muted" style="margin-bottom:10px;">Elegí a qué palo tirar. No hay pistas del ojeador.</div>
+    <div class="event-options">
+      ${ZONES.map(z=>`
+        <button class="event-option" onclick="resolveMinigameShot('${z}')">
+          <b>${z.charAt(0).toUpperCase()+z.slice(1)}</b>
+        </button>`).join('')}
     </div>`;
 }
 async function resolveMinigameShot(zone){
@@ -1752,9 +1812,9 @@ async function resolveMinigameShot(zone){
   if(scored) m.goals++;
   m.round++;
   career.log.push({age:career.age, text: scored? `Penal convertido, tiró a la ${zone}.` : `Penal errado, el arquero adivinó y se tiró a la ${keeperDive}.`});
-  if(m.round>=m.shots){ await resolvePlayoffMatch(m.goals>=2); return; }
+  if(m.round>=m.shots){ await appendHistoryRowAndAdvance(m.goals>=2); return; }
   await saveActiveCareer();
-  render();
+  refreshBoard();
 }
 
 /* ---------- Variante 2: 4 en línea ---------- */
@@ -1818,7 +1878,7 @@ function c4BestMove(board, symbol){
   scored.sort((a,b)=>b.s-a.s);
   return scored[0].i;
 }
-function renderCuatroEnLinea(){
+function renderCuatroEnLineaBoard(){
   const m = career._minigame;
   const pegada = career.stats.pegada;
   let hintIdx = -1;
@@ -1827,49 +1887,43 @@ function renderCuatroEnLinea(){
     if(Math.random() < clamp(pegada/130, 0.2, 0.7)) hintIdx = cand;
   }
   return `
-    <div class="card phase-in">
-      <h2>${playoffLabel()}</h2>
-      <div class="muted">La jugada ensayada del entrenador: hacé <b style="color:var(--green);">4 en línea</b> (vos <b style="color:#8fb2ff;">X</b>) antes que el rival (<b style="color:var(--red);">O</b>) y sale el gol.</div>
-      <div class="c4-grid">
-        ${m.board.map((v,i)=>`<button class="c4-cell ${v==='X'?'x':v==='O'?'o':''} ${i===hintIdx?'hint':''}" onclick="c4PlayerMove(${i})" ${v?'disabled':''}>${v||''}</button>`).join('')}
-      </div>
+    <div class="muted">La jugada ensayada del entrenador: hacé <b style="color:var(--green);">4 en línea</b> (vos <b style="color:#8fb2ff;">X</b>) antes que el rival (<b style="color:var(--red);">O</b>) y sale el gol.</div>
+    <div class="c4-grid">
+      ${m.board.map((v,i)=>`<button class="c4-cell ${v==='X'?'x':v==='O'?'o':''} ${i===hintIdx?'hint':''}" onclick="c4PlayerMove(${i})" ${v?'disabled':''}>${v||''}</button>`).join('')}
     </div>`;
 }
 async function c4PlayerMove(i){
   const m = career._minigame;
   if(m.board[i]) return;
   m.board[i]='X';
-  if(c4CheckWin(m.board,'X')){ await resolvePlayoffMatch(true); return; }
-  if(!m.board.some(v=>!v)){ await resolvePlayoffMatch(Math.random()<clamp(0.4+career.stats.pegada/300,0.3,0.7)); return; }
+  if(c4CheckWin(m.board,'X')){ await appendHistoryRowAndAdvance(true); return; }
+  if(!m.board.some(v=>!v)){ await appendHistoryRowAndAdvance(Math.random()<clamp(0.4+career.stats.pegada/300,0.3,0.7)); return; }
   const oIdx = c4BestMove(m.board,'O');
   m.board[oIdx]='O';
-  if(c4CheckWin(m.board,'O')){ await resolvePlayoffMatch(false); return; }
-  if(!m.board.some(v=>!v)){ await resolvePlayoffMatch(Math.random()<clamp(0.4+career.stats.pegada/300,0.3,0.7)); return; }
+  if(c4CheckWin(m.board,'O')){ await appendHistoryRowAndAdvance(false); return; }
+  if(!m.board.some(v=>!v)){ await appendHistoryRowAndAdvance(Math.random()<clamp(0.4+career.stats.pegada/300,0.3,0.7)); return; }
   await saveActiveCareer();
-  render();
+  refreshBoard();
 }
 
 /* ---------- Variante 3: Simón dice ---------- */
 const SIMON_COLORS = Array.from({length:16},(_,i)=>`hsl(${Math.round(i*22.5)},65%,55%)`);
-function renderSimonDice(){
+function renderSimonDiceBoard(){
   const m = career._minigame;
   const label = m.phase==='input' ? 'TU TURNO: REPETILA' : m.phase==='showing' ? 'MIRÁ BIEN...' : 'MEMORIZÁ LA JUGADA';
   return `
-    <div class="card phase-in">
-      <h2>${playoffLabel()}</h2>
-      <div class="muted" id="simonLabel" style="color:var(--green);font-family:'JetBrains Mono',monospace;letter-spacing:1px;">${label}</div>
-      <div class="simon-grid">
-        ${SIMON_COLORS.map((c,i)=>`<button class="simon-tile" id="simonTile${i}" style="background:${c};" onclick="clickSimonTile(${i})"></button>`).join('')}
-      </div>
-      ${m.phase==='idle'? `<div class="btn-row" style="justify-content:center;"><button class="btn gold" onclick="startSimonShow()">EMPEZAR</button></div>` : ''}
-      <div class="muted" style="margin-top:8px;">Tu Resistencia te da margen si te equivocás.</div>
-    </div>`;
+    <div class="muted" id="simonLabel" style="color:var(--green);font-family:'JetBrains Mono',monospace;letter-spacing:1px;">${label}</div>
+    <div class="simon-grid">
+      ${SIMON_COLORS.map((c,i)=>`<button class="simon-tile" id="simonTile${i}" style="background:${c};" onclick="clickSimonTile(${i})"></button>`).join('')}
+    </div>
+    ${m.phase==='idle'? `<div class="btn-row" style="justify-content:center;"><button class="btn gold" onclick="startSimonShow()">EMPEZAR</button></div>` : ''}
+    <div class="muted" style="margin-top:8px;">Tu Resistencia te da margen si te equivocás.</div>`;
 }
 async function startSimonShow(){
   const m = career._minigame;
   m.phase='showing';
   m.playerIndex=0;
-  render();
+  refreshBoard();
   const speed = clamp(680 - career.stats.velocidad*3, 320, 680);
   for(let i=0;i<m.sequence.length;i++){
     await new Promise(r=>setTimeout(r,220));
@@ -1888,30 +1942,27 @@ async function clickSimonTile(i){
   if(el){ el.classList.add('active'); setTimeout(()=>el.classList.remove('active'),150); }
   if(i===m.sequence[m.playerIndex]){
     m.playerIndex++;
-    if(m.playerIndex>=m.sequence.length){ await resolvePlayoffMatch(true); }
+    if(m.playerIndex>=m.sequence.length){ await appendHistoryRowAndAdvance(true); }
   } else {
     const forgiveness = clamp((career.stats.resistencia-60)/300, 0, 0.18);
     if(Math.random()<forgiveness){ toast('Por poco, pero la Resistencia te salva'); return; }
-    await resolvePlayoffMatch(false);
+    await appendHistoryRowAndAdvance(false);
   }
 }
 
 /* ---------- Variante 4: parar en la zona verde ---------- */
-function renderZonaVerde(){
+function renderZonaVerdeBoard(){
   const m = career._minigame;
   const zoneWidth = clamp(14 + career.stats.pegada/6, 12, 34);
   const zoneStart = 50 - zoneWidth/2;
   return `
-    <div class="card phase-in">
-      <h2>${playoffLabel()}</h2>
-      <div class="muted">Intento ${m.round+1} de ${m.rounds} · Aciertos: ${m.hits}</div>
-      <div class="muted" style="margin-bottom:10px;">Frená la barra justo en la zona verde para meter el centro perfecto.</div>
-      <div style="position:relative;height:34px;background:rgba(255,255,255,0.06);border-radius:10px;overflow:hidden;border:1px solid var(--edge);">
-        <div style="position:absolute;top:0;bottom:0;left:${zoneStart}%;width:${zoneWidth}%;background:rgba(51,209,126,0.35);border-left:2px solid var(--green);border-right:2px solid var(--green);"></div>
-        <div id="zvMarker" style="position:absolute;top:2px;bottom:2px;left:0%;width:6px;background:var(--yellow);border-radius:3px;"></div>
-      </div>
-      <div class="btn-row" style="justify-content:center;"><button class="btn gold" id="zvBtn" onclick="zvAction()">${m.running? 'PARAR' : 'ARRANCAR'}</button></div>
-    </div>`;
+    <div class="muted">Intento ${m.round+1} de ${m.rounds} · Aciertos: ${m.hits}</div>
+    <div class="muted" style="margin-bottom:10px;">Frená la barra justo en la zona verde para meter el centro perfecto.</div>
+    <div style="position:relative;height:34px;background:rgba(255,255,255,0.06);border-radius:10px;overflow:hidden;border:1px solid var(--edge);">
+      <div style="position:absolute;top:0;bottom:0;left:${zoneStart}%;width:${zoneWidth}%;background:rgba(51,209,126,0.35);border-left:2px solid var(--green);border-right:2px solid var(--green);"></div>
+      <div id="zvMarker" style="position:absolute;top:2px;bottom:2px;left:${m.pos}%;width:6px;background:var(--yellow);border-radius:3px;"></div>
+    </div>
+    <div class="btn-row" style="justify-content:center;"><button class="btn gold" id="zvBtn" onclick="zvAction()">${m.running? 'PARAR' : 'ARRANCAR'}</button></div>`;
 }
 let zvRafId = null;
 function zvAction(){
@@ -1944,9 +1995,9 @@ async function zvStop(){
   if(hit) m.hits++;
   m.round++;
   career.log.push({age:career.age, text: hit? 'Centro perfecto a la zona verde.' : 'El centro se te escapó de la zona.'});
-  if(m.round>=m.rounds){ await resolvePlayoffMatch(m.hits>=2); return; }
+  if(m.round>=m.rounds){ await appendHistoryRowAndAdvance(m.hits>=2); return; }
   await saveActiveCareer();
-  render();
+  refreshBoard();
 }
 
 function seasonGrade(s){
@@ -2394,6 +2445,11 @@ function render(){
       lastDossierHtml = dossier;
     }
     pSlot.innerHTML = phase;
+    if(career && career.phase==='minigame' && career._playoff){
+      updateStageHeader();
+      refreshBoard();
+      rebuildMinigameHistoryRows();
+    }
   } else {
     lastDossierHtml = null;
     if(tab==='liga') app.innerHTML = renderLiga();
