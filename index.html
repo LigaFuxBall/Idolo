@@ -244,6 +244,8 @@
   .attr-box .n{font-family:'Archivo Black',sans-serif;font-size:18px;color:var(--text);}
   .attr-box.top .n{color:var(--yellow);}
   .attr-box .l{font-family:'JetBrains Mono',monospace;font-size:7.5px;letter-spacing:0.3px;color:var(--text-dim);text-transform:uppercase;margin-top:1px;}
+  .flash-up{ color:var(--green) !important; transition:color .2s ease; }
+  .flash-down{ color:var(--red) !important; transition:color .2s ease; }
   .value-box{background:rgba(255,255,255,0.045);border:1px solid var(--edge);border-radius:9px;padding:8px;text-align:center;}
   .value-box .n{font-family:'Archivo Black',sans-serif;font-size:18px;}
   .value-box .n.money{color:#5fd0ff;}
@@ -1696,7 +1698,17 @@ function renderMinigame(){
       <div id="mgOpponentSlot"></div>
       <div id="mgBoardSlot"></div>
       <div id="mgHistorySlot" class="mg-history"></div>
+      <div style="text-align:center;margin-top:14px;">
+        <button onclick="recoverMinigame()" style="background:none;border:none;color:var(--text-dim);font-family:'JetBrains Mono',monospace;font-size:10.5px;text-decoration:underline;cursor:pointer;">¿Se trabó? Tocá acá para reintentar</button>
+      </div>
     </div>`;
+}
+async function recoverMinigame(){
+  if(!career || !career._playoff){ toast('No hay ningún partido en curso'); return; }
+  toast('Reintentando…');
+  updateStageHeader();
+  rebuildMinigameHistoryRows();
+  await startPlayoffMatch();
 }
 function rebuildMinigameHistoryRows(){
   const p = career._playoff;
@@ -1709,6 +1721,7 @@ function rebuildMinigameHistoryRows(){
 }
 function updateStageHeader(){
   const p = career._playoff;
+  if(!p) return;
   const stagesSlot = document.getElementById('mgStagesSlot');
   const oppSlot = document.getElementById('mgOpponentSlot');
   if(stagesSlot){
@@ -1722,6 +1735,7 @@ function updateStageHeader(){
   }
 }
 async function startPlayoffMatch(){
+  if(!career._playoff){ return; }
   const variant = choice(['penales','cuatro','simon','zonaverde']);
   if(variant==='penales'){
     const dist = {};
@@ -1746,6 +1760,12 @@ function refreshBoard(){
   const slot = document.getElementById('mgBoardSlot');
   if(!slot) return;
   const m = career._minigame;
+  if(!m || !m.variant){
+    // el partido no se generó bien (recarga a mitad de camino, etc.) — lo regeneramos solo
+    slot.innerHTML = `<div class="muted" style="text-align:center;padding:20px 0;">Preparando el partido…</div>`;
+    startPlayoffMatch();
+    return;
+  }
   if(m.variant==='cuatro') slot.innerHTML = renderCuatroEnLineaBoard();
   else if(m.variant==='simon') slot.innerHTML = renderSimonDiceBoard();
   else if(m.variant==='zonaverde') slot.innerHTML = renderZonaVerdeBoard();
@@ -2231,7 +2251,7 @@ function renderActiveCareerCard(){
   return `
   <div class="dossier phase-in">
     <div class="dossier-top">
-      <div class="dossier-rating">${career.rating}</div>
+      <div class="dossier-rating" id="stat-rating">${career.rating}</div>
       <div class="dossier-id">
         <div class="dossier-name">${career.name} · ${posShort(career.position)} ${career.jerseyNumber}</div>
         <div class="dossier-meta">${team?team.name:'Sin club'} · ${career.startYear+(career.age-16)} · ${career.age} AÑOS</div>
@@ -2243,13 +2263,13 @@ function renderActiveCareerCard(){
       </div>
     </div>
     <div class="dossier-stats-row">
-      <div class="stat-box"><div class="n">${career.careerGoals}</div><div class="l">Goles</div></div>
-      <div class="stat-box"><div class="n">${career.careerAssists}</div><div class="l">Asistencias</div></div>
-      <div class="stat-box"><div class="n">${career.careerApps}</div><div class="l">Partidos</div></div>
-      <div class="stat-box"><div class="n">${career.trophies.ligas+career.trophies.copas+career.trophies.internacionales}</div><div class="l">Títulos</div></div>
+      <div class="stat-box"><div class="n" id="stat-goals">${career.careerGoals}</div><div class="l">Goles</div></div>
+      <div class="stat-box"><div class="n" id="stat-assists">${career.careerAssists}</div><div class="l">Asistencias</div></div>
+      <div class="stat-box"><div class="n" id="stat-apps">${career.careerApps}</div><div class="l">Partidos</div></div>
+      <div class="stat-box"><div class="n" id="stat-titulos">${career.trophies.ligas+career.trophies.copas+career.trophies.internacionales}</div><div class="l">Títulos</div></div>
     </div>
     <div class="dossier-attrs-row">
-      ${STAT_KEYS.map(k=>`<div class="attr-box ${k===topStat?'top':''}"><div class="n">${career.stats[k]}</div><div class="l">${labels[k]}</div></div>`).join('')}
+      ${STAT_KEYS.map(k=>`<div class="attr-box ${k===topStat?'top':''}"><div class="n" id="stat-${k}">${career.stats[k]}</div><div class="l">${labels[k]}</div></div>`).join('')}
     </div>
     <div class="dossier-extra-row">
       <div class="value-box"><div class="n money">${marketValue()}</div><div class="l">Valor</div></div>
@@ -2421,6 +2441,31 @@ function setTab(t){
   tab=t; render();
 }
 let lastDossierHtml = null;
+let lastStatsSnapshot = null;
+function flashStatChanges(){
+  if(!career){ lastStatsSnapshot=null; return; }
+  const current = {};
+  STAT_KEYS.forEach(k=>{ current[k]=career.stats[k]; });
+  current.goals = career.careerGoals;
+  current.assists = career.careerAssists;
+  current.apps = career.careerApps;
+  current.rating = career.rating;
+  current.titulos = career.trophies.ligas+career.trophies.copas+career.trophies.internacionales;
+  if(lastStatsSnapshot){
+    Object.keys(current).forEach(k=>{
+      if(current[k]!==lastStatsSnapshot[k]){
+        const el = document.getElementById('stat-'+k);
+        if(el){
+          el.classList.remove('flash-up','flash-down');
+          void el.offsetWidth; // fuerza el reinicio de la animación
+          el.classList.add(current[k]>lastStatsSnapshot[k] ? 'flash-up' : 'flash-down');
+          setTimeout(()=>{ el.classList.remove('flash-up','flash-down'); }, 1000);
+        }
+      }
+    });
+  }
+  lastStatsSnapshot = current;
+}
 function render(){
   const ligaBtn = document.getElementById('tabLigaBtn');
   if(ligaBtn) ligaBtn.style.display = isAdmin ? '' : 'none';
@@ -2440,9 +2485,11 @@ function render(){
     if(dossier===null){
       if(dSlot.innerHTML!==''){ dSlot.innerHTML=''; }
       lastDossierHtml = null;
+      lastStatsSnapshot = null;
     } else if(dossier!==lastDossierHtml){
       dSlot.innerHTML = dossier;
       lastDossierHtml = dossier;
+      flashStatChanges();
     }
     pSlot.innerHTML = phase;
     if(career && career.phase==='minigame' && career._playoff){
